@@ -1,0 +1,298 @@
+{
+  "processo": "Certidão de Diretrizes Municipais",
+  "objetivo": "Certidão de Diretrizes Municipais é uma documentação emitida como requisito para processos de loteamento conforme 3º Parágrafo do Artigo Nº 98 da Lei Complementar Nº 5.807/2022, ou quando o imóvel ou empreendimento encontra-se inserido em alguma Zona Especial (ZEUS, ZEIS, ZEII, ZEIC ou ZEPEU) conforme Artigo Nº 42 da Lei Complementar Nº 5.807/2022. Em conjunto com a Secretaria Municipal de Planejamento (SEMPLAN), a documentação permite com que sejam estabelecidos os critérios que serão aplicados durante a análise.",
+  "setores": [
+    {
+      "id": "s1",
+      "nome": "Requerente"
+    },
+    {
+      "id": "s2",
+      "nome": "SDU: Protocolo"
+    },
+    {
+      "id": "s3",
+      "nome": "SDU: CEU"
+    },
+    {
+      "id": "s4",
+      "nome": "SDU: CEU - AAD"
+    },
+    {
+      "id": "s5",
+      "nome": "SEMPLAN: SEPLUR - CTM"
+    }
+  ],
+  "elementos": [
+    {
+      "id": "e1",
+      "numero": "1",
+      "tipo": "inicio",
+      "nome": "Solicitação através da plataforma SEI",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [
+        "SEI (sei.pmt.pi.gov.br/sei)"
+      ],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 1"
+    },
+    {
+      "id": "e2",
+      "numero": "2",
+      "tipo": "tarefa",
+      "nome": "Protocolo analisa documentação e emite a taxa de análise de viabilidade",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [
+        "Taxa de análise de viabilidade (cód. 71130002)"
+      ],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 2"
+    },
+    {
+      "id": "e3",
+      "numero": "3",
+      "tipo": "tarefa",
+      "nome": "Requerente paga a taxa e anexa o comprovante ao processo",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 3"
+    },
+    {
+      "id": "e4",
+      "numero": "4",
+      "tipo": "tarefa",
+      "nome": "Protocolo encaminha o processo à CEU",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 4"
+    },
+    {
+      "id": "e5",
+      "numero": "5",
+      "tipo": "tarefa",
+      "nome": "Distribui processo à Assessoria de Apoio à Divisão - AAD",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 5"
+    },
+    {
+      "id": "e6",
+      "numero": "6",
+      "tipo": "tarefa",
+      "nome": "Processo é encaminhado à Comissão Técnica da Secretaria Executiva de Planejamento Urbano - SEPLUR",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 6"
+    },
+    {
+      "id": "e7",
+      "numero": "7",
+      "tipo": "tarefa",
+      "nome": "Processo é analisado em reunião ordinária prevista no calendário semestral",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 7"
+    },
+    {
+      "id": "e8",
+      "numero": "8",
+      "tipo": "tarefa",
+      "nome": "Elabora parecer técnico",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 8"
+    },
+    {
+      "id": "e8_1",
+      "numero": "8.1",
+      "tipo": "tarefa",
+      "nome": "Caso seja notificado, o solicitante deve resolver a pendência em até 30 dias",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "até 30 dias",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 8.1",
+      "ramo": "pendencia"
+    },
+    {
+      "id": "e8_2",
+      "numero": "8.2",
+      "tipo": "tarefa",
+      "nome": "Retorna o processo para análise",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 8.2",
+      "ramo": "pendencia"
+    },
+    {
+      "id": "e9",
+      "numero": "9",
+      "tipo": "tarefa",
+      "nome": "Caso não possua nenhuma pendência, o processo segue para deferimento",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 9"
+    },
+    {
+      "id": "e10",
+      "numero": "10",
+      "tipo": "tarefa",
+      "nome": "Emite certidão de diretrizes municipais e retorna o processo à SDU",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 10"
+    },
+    {
+      "id": "e11",
+      "numero": "11",
+      "tipo": "tarefa",
+      "nome": "Encaminha o processo à CEU para encerramento",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 11"
+    },
+    {
+      "id": "e12",
+      "numero": "12",
+      "tipo": "fim",
+      "nome": "Processo é encerrado",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.5 · FLUXOGRAMAS - AAD e CEU, p. 7, passo 12"
+    }
+  ],
+  "fluxos": [
+    {
+      "de": "e1",
+      "para": "e2",
+      "condicao": ""
+    },
+    {
+      "de": "e2",
+      "para": "e3",
+      "condicao": ""
+    },
+    {
+      "de": "e3",
+      "para": "e4",
+      "condicao": ""
+    },
+    {
+      "de": "e4",
+      "para": "e5",
+      "condicao": ""
+    },
+    {
+      "de": "e5",
+      "para": "e6",
+      "condicao": ""
+    },
+    {
+      "de": "e6",
+      "para": "e7",
+      "condicao": ""
+    },
+    {
+      "de": "e7",
+      "para": "e8",
+      "condicao": ""
+    },
+    {
+      "de": "e8",
+      "para": "e8_1",
+      "condicao": "caso notificado"
+    },
+    {
+      "de": "e8",
+      "para": "e9",
+      "condicao": "",
+      "obs": "seta não desenhada no PDF; inferida pelo padrão dos fluxogramas 2.1 a 2.3 (conferir)"
+    },
+    {
+      "de": "e8_1",
+      "para": "e8_2",
+      "condicao": ""
+    },
+    {
+      "de": "e8_2",
+      "para": "e9",
+      "condicao": ""
+    },
+    {
+      "de": "e9",
+      "para": "e10",
+      "condicao": ""
+    },
+    {
+      "de": "e10",
+      "para": "e11",
+      "condicao": ""
+    },
+    {
+      "de": "e11",
+      "para": "e12",
+      "condicao": ""
+    }
+  ],
+  "gabarito": {
+    "codigo": "2.5",
+    "fonte": "FLUXOGRAMAS - AAD e CEU.pdf, p. 7",
+    "informacoes_gerais": "Certidão de Diretrizes Municipais é uma documentação emitida como requisito para processos de loteamento conforme 3º Parágrafo do Artigo Nº 98 da Lei Complementar Nº 5.807/2022, ou quando o imóvel ou empreendimento encontra-se inserido em alguma Zona Especial (ZEUS, ZEIS, ZEII, ZEIC ou ZEPEU) conforme Artigo Nº 42 da Lei Complementar Nº 5.807/2022. Em conjunto com a Secretaria Municipal de Planejamento (SEMPLAN), a documentação permite com que sejam estabelecidos os critérios que serão aplicados durante a análise.",
+    "sistema": [
+      "Plataforma SEI"
+    ],
+    "documentacao_processo_sei": [
+      "Requerimento",
+      "Registro de imóvel (Atualizado em até 1 ano)",
+      "Levantamento planialtimétrico (Georreferenciado, em escala que permita a legibilidade, em meio digital, com curvas de nível de metro em metro e pontos cotados, indicando os limites e confrontações do terreno, a orientação magnética e as vias oficiais lindeiras ou próximas)",
+      "Levantamento fitossociológico e faunístico da área",
+      "Planta de macrolocalização, considerando o raio de 1000 m a partir do centro do terreno"
+    ],
+    "legenda": [
+      "▲ Em caso de pendência"
+    ],
+    "observacoes": [],
+    "notas_da_transcricao": [
+      "A ligação 8 → 9 não aparece desenhada no PDF (nos fluxogramas 2.1 a 2.3 ela existe); foi incluída e marcada como inferida.",
+      "O prazo de 30 dias está escrito dentro da caixa 8.1 (nos demais é uma observação geral de 90 dias)."
+    ]
+  }
+}
