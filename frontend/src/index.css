@@ -1,0 +1,102 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* FluxoIA: tokens oficiais da Identidade Visual v1.0 */
+:root {
+  --fx-azul-marinho: #0B2A4A;    /* Texto de marca, fundos escuros, símbolo */
+  --fx-azul-fluxoia: #1D5FA6;    /* Cor principal: destaques, links, botões */
+  --fx-azul-claro: #7FB2E5;      /* Destaque sobre fundo escuro, gráficos */
+  --fx-azul-nevoa: #D6E3F3;      /* Cartões alternativos, cabeçalhos */
+  --fx-fundo: #E9F0F8;           /* Fundo de telas e slides */
+  --fx-papel: #F7FAFD;           /* Cartões e superfícies */
+  --fx-grafite: #13233A;         /* Texto corrido */
+  --fx-cinza-azulado: #52657C;   /* Texto secundário e legendas */
+  --fx-linha: #B5C6DC;           /* Bordas e divisórias */
+  --fx-verde-azulado: #1F7A8C;   /* Positivo: sucesso, válido, confirmado */
+  --fx-laranja-alerta: #B4531A;  /* Alerta e baixa confiança */
+
+  --fx-fonte-titulo: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --fx-fonte-texto: "Source Sans 3", "Source Sans Pro", Calibri, Arial, sans-serif;
+
+  --fx-raio-pequeno: 6px;
+  --fx-raio-cartao: 10px;
+  --fx-raio-recipiente: 14px;
+
+  /* Mapeamento para os componentes shadcn/ui */
+  --radius: 10px;
+  --background: var(--fx-fundo);
+  --foreground: var(--fx-grafite);
+  --card: var(--fx-papel);
+  --card-foreground: var(--fx-grafite);
+  --popover: var(--fx-papel);
+  --popover-foreground: var(--fx-grafite);
+  --primary: var(--fx-azul-fluxoia);
+  --primary-foreground: var(--fx-papel);
+  --secondary: var(--fx-azul-nevoa);
+  --secondary-foreground: var(--fx-azul-marinho);
+  --muted: var(--fx-azul-nevoa);
+  --muted-foreground: var(--fx-cinza-azulado);
+  --accent: var(--fx-azul-nevoa);
+  --accent-foreground: var(--fx-azul-marinho);
+  --destructive: var(--fx-laranja-alerta);
+  --border: var(--fx-linha);
+  --input: var(--fx-linha);
+  --ring: var(--fx-azul-fluxoia);
+}
+
+@theme inline {
+  --font-sans: var(--fx-fonte-texto);
+  --font-serif: var(--fx-fonte-titulo);
+
+  --radius-sm: var(--fx-raio-pequeno);
+  --radius-md: var(--fx-raio-cartao);
+  --radius-lg: var(--fx-raio-recipiente);
+  --radius-xl: calc(var(--fx-raio-recipiente) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Utilitários diretos para a paleta FluxoIA */
+  --color-fx-marinho: var(--fx-azul-marinho);
+  --color-fx-azul: var(--fx-azul-fluxoia);
+  --color-fx-claro: var(--fx-azul-claro);
+  --color-fx-nevoa: var(--fx-azul-nevoa);
+  --color-fx-fundo: var(--fx-fundo);
+  --color-fx-papel: var(--fx-papel);
+  --color-fx-grafite: var(--fx-grafite);
+  --color-fx-cinza: var(--fx-cinza-azulado);
+  --color-fx-linha: var(--fx-linha);
+  --color-fx-sucesso: var(--fx-verde-azulado);
+  --color-fx-alerta: var(--fx-laranja-alerta);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    font-family: var(--fx-fonte-texto);
+    @apply bg-background text-foreground antialiased;
+  }
+  h1, h2 {
+    font-family: var(--fx-fonte-titulo);
+  }
+}
