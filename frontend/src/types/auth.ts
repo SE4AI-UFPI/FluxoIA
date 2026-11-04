@@ -1,4 +1,10 @@
-export type PapelUsuario = 'servidor' | 'validador' | 'admin'
+export type PapelUsuario =
+  | 'servidor'
+  | 'validador'
+  | 'admin'
+  | 'supervisor'
+  | 'coordenador'
+  | 'operacional'
 
 export interface Usuario {
   id: string
@@ -9,6 +15,10 @@ export interface Usuario {
   setor: string
   cargo: string
   matricula: string | null
+  cpf: string | null
+  telefone: string
+  setores_vinculados: string[]
+  permissoes: string[]
   is_active: boolean
   criado_em: string
   atualizado_em: string

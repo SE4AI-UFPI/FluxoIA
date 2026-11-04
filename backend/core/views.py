@@ -90,6 +90,7 @@ class UserViewSet(viewsets.ModelViewSet):
             secretaria=params.get('secretaria'),
             setor=params.get('setor'),
             is_active=params.get('is_active'),
+            usuario_solicitante=self.request.user,
         )
 
     def perform_create(self, serializer):
