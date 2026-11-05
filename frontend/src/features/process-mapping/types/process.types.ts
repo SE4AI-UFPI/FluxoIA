@@ -30,12 +30,26 @@ export interface ProcessInfo {
   legislation: string
 }
 
+export type EditLevelRequired =
+  | 'nenhuma'
+  | 'pequenos_ajustes'
+  | 'ajustes_moderados'
+  | 'reconstrucao'
+
+export type IdentifiedProblemTag =
+  | 'etapas_ausentes'
+  | 'raias_incorretas'
+  | 'decisoes_incorretas'
+  | 'sequencia_incorreta'
+  | 'aprovacoes_ausentes'
+
 export interface ProcessFeedback {
   representsProcess: boolean | null
-  missingSteps: string
-  missingApprovals: string
-  incorrectResponsibles: string
-  generalNotes: string
+  accuracyScore: number // 1 a 5 (default 5)
+  editLevel: EditLevelRequired // default 'nenhuma'
+  interviewClarityScore: number // 1 a 5 (default 5)
+  identifiedProblems: IdentifiedProblemTag[] // checkboxes opcionais
+  generalNotes: string // observação opcional
 }
 
 export interface ProcessHistoryEntry {
@@ -48,6 +62,7 @@ export interface ProcessHistoryEntry {
 
 export interface ProcessWizardState {
   id: string
+  backendId?: string | null
   ownerId: string
   info: ProcessInfo
   answers: Record<InterviewAnswerKey, string>
@@ -72,4 +87,43 @@ export interface ProcessAuditSummary {
   ownerName: string
   name: string
   sector: string
+}
+
+export interface ApiProcesso {
+  id: string
+  codigo: string | null
+  nome: string
+  secretaria: string
+  setor: string
+  objetivo: string
+  descricao: string
+  legislacao: string
+  etapa_atual: number
+  status:
+    | 'rascunho'
+    | 'em_entrevista'
+    | 'em_modelagem'
+    | 'em_avaliacao'
+    | 'aguardando_validacao'
+    | 'ajustes_solicitados'
+    | 'aprovado'
+    | 'publicado'
+  versao_atual: string
+  bpmn_xml_atual: string | null
+  criado_por: string
+  criado_por_nome: string
+  atualizado_em: string
+  submetido_em: string | null
+  entrevista?: {
+    pergunta_atual_idx: number
+    respostas: Record<string, string>
+  }
+  versoes_bpmn?: Array<{
+    id: string
+    numero_versao: string
+    bpmn_xml: string
+    motivo_alteracao: string
+    gerado_por_nome: string
+    criado_em: string
+  }>
 }

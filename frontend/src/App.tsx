@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { DashboardPlaceholder } from '@/pages/DashboardPlaceholder'
 import { LoginPage } from '@/pages/LoginPage'
 import { UserRegistrationPage } from '@/features/users/UserRegistrationPage'
+import { canAccessMenu } from '@/features/navigation/permissions.config'
 import { Sidebar } from '@/features/navigation/sidebar'
 
 const ProcessMappingPage = lazy(() =>
@@ -13,17 +14,23 @@ const ProcessMappingPage = lazy(() =>
 )
 
 function ProcessMappingRoute() {
+  const { user } = useAuth()
+
   return (
     <ProtectedRoute>
-      <Suspense
-        fallback={(
-          <div className="min-h-screen bg-fx-fundo p-6 text-sm font-semibold text-fx-marinho">
-            Carregando mapeamento de processos...
-          </div>
-        )}
-      >
-        <ProcessMappingPage />
-      </Suspense>
+      {user && !canAccessMenu(user, 'processes:create') ? (
+        <Navigate to="/" replace />
+      ) : (
+        <Suspense
+          fallback={(
+            <div className="min-h-screen bg-fx-fundo p-6 text-sm font-semibold text-fx-marinho">
+              Carregando mapeamento de processos...
+            </div>
+          )}
+        >
+          <ProcessMappingPage />
+        </Suspense>
+      )}
     </ProtectedRoute>
   )
 }
