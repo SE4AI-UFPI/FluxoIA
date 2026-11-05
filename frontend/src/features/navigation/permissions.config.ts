@@ -2,15 +2,16 @@ import type { PapelUsuario } from '@/types/auth'
 import type { MenuPermission, NavigationUser } from './navigation.types'
 
 const PERMISSIONS_BY_ROLE: Record<PapelUsuario, MenuPermission[]> = {
-  admin: ['dashboard:view', 'reports:view', 'users:manage'],
-  supervisor: [
+  admin: [
     'dashboard:view',
+    'processes:create',
     'processes:view',
     'governance:validate',
     'indicators:view',
     'reports:view',
+    'users:manage',
   ],
-  validador: [
+  supervisor: [
     'dashboard:view',
     'processes:view',
     'governance:validate',
@@ -19,12 +20,16 @@ const PERMISSIONS_BY_ROLE: Record<PapelUsuario, MenuPermission[]> = {
   ],
   coordenador: [
     'dashboard:view',
+    'processes:create',
     'processes:view',
     'indicators:view',
     'reports:view',
   ],
-  operacional: ['dashboard:view', 'processes:view'],
-  servidor: ['dashboard:view', 'processes:create', 'processes:view'],
+  operacional: [
+    'dashboard:view',
+    'processes:create',
+    'processes:view',
+  ],
 }
 
 const COMPLEMENTARY_PERMISSION_MAP: Record<string, MenuPermission[]> = {
@@ -41,16 +46,24 @@ const COMPLEMENTARY_PERMISSION_MAP: Record<string, MenuPermission[]> = {
 }
 
 export function getUserMenuPermissions(user: NavigationUser): Set<MenuPermission> {
-  const permissions = new Set(PERMISSIONS_BY_ROLE[user.papel])
-  if (user.papel === 'admin') return permissions
-
-  for (const complementaryPermission of user.permissoes ?? []) {
-    for (const permission of COMPLEMENTARY_PERMISSION_MAP[complementaryPermission] ?? []) {
-      permissions.add(permission)
-    }
+  if (user.papel === 'admin') {
+    return new Set(PERMISSIONS_BY_ROLE.admin)
   }
 
-  return permissions
+  if (user.permissoes && user.permissoes.length > 0) {
+    const permissions = new Set<MenuPermission>()
+    for (const complementaryPermission of user.permissoes) {
+      for (const permission of COMPLEMENTARY_PERMISSION_MAP[complementaryPermission] ?? []) {
+        permissions.add(permission)
+      }
+    }
+    if (permissions.size === 0) {
+      permissions.add('dashboard:view')
+    }
+    return permissions
+  }
+
+  return new Set(PERMISSIONS_BY_ROLE[user.papel] ?? ['dashboard:view'])
 }
 
 export function canAccessMenu(user: NavigationUser, permission: MenuPermission): boolean {

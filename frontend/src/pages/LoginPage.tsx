@@ -205,8 +205,8 @@ export function LoginPage() {
               <div className="mt-6 pt-5 border-t border-fx-linha/70">
                 <p className="text-xs leading-relaxed text-fx-cinza">
                   <strong className="font-semibold text-fx-grafite">Proteção de dados (LGPD):</strong>{' '}
-                  O acesso é vinculado ao seu papel no sistema (Servidor, Chefe do Setor ou
-                  Administrador). Não insira CPF nem dados pessoais de cidadãos nas entrevistas.
+                  O acesso é vinculado ao seu papel no sistema (Operacional, Coordenador, Supervisor
+                  ou Administrador). Não insira dados pessoais de cidadãos nas entrevistas.
                 </p>
               </div>
             </CardContent>

@@ -1,6 +1,12 @@
 from django.db import migrations, models
 
 
+def migrate_legacy_roles(apps, schema_editor):
+    User = apps.get_model('core', 'User')
+    User.objects.filter(papel='servidor').update(papel='operacional')
+    User.objects.filter(papel='validador').update(papel='supervisor')
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,19 +19,18 @@ class Migration(migrations.Migration):
             name='email',
             field=models.EmailField(max_length=254, unique=True, verbose_name='e-mail'),
         ),
+        migrations.RunPython(migrate_legacy_roles, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='user',
             name='papel',
             field=models.CharField(
                 choices=[
-                    ('servidor', 'Servidor'),
-                    ('validador', 'Chefe do Setor (Validador)'),
                     ('admin', 'Administrador'),
                     ('supervisor', 'Supervisor de Setor'),
                     ('coordenador', 'Coordenador'),
                     ('operacional', 'Usuário Operacional'),
                 ],
-                default='servidor',
+                default='operacional',
                 max_length=20,
                 verbose_name='papel no sistema',
             ),
