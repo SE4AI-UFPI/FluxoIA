@@ -7,6 +7,9 @@ class PapelUsuario(models.TextChoices):
     SERVIDOR = 'servidor', 'Servidor'
     VALIDADOR = 'validador', 'Chefe do Setor (Validador)'
     ADMIN = 'admin', 'Administrador'
+    SUPERVISOR = 'supervisor', 'Supervisor de Setor'
+    COORDENADOR = 'coordenador', 'Coordenador'
+    OPERACIONAL = 'operacional', 'Usuário Operacional'
 
 
 class UserManager(BaseUserManager):
@@ -32,8 +35,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser):
     """
-    Modelo de usuário do FluxoIA alinhado aos atores e restrições de LGPD do M2.
-    Não armazena CPF nem telefone pessoal (minimização de dados - R5).
+    Modelo de usuário do FluxoIA com dados funcionais e escopo RBAC.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -73,6 +75,10 @@ class User(AbstractBaseUser):
         null=True,
         unique=True,
     )
+    cpf = models.CharField('CPF', max_length=11, blank=True, null=True, unique=True)
+    telefone = models.CharField('telefone', max_length=20, blank=True, default='')
+    setores_vinculados = models.JSONField('setores vinculados', default=list, blank=True)
+    permissoes = models.JSONField('permissões complementares', default=list, blank=True)
 
     is_active = models.BooleanField('ativo', default=True)
     criado_em = models.DateTimeField('criado em', auto_now_add=True)

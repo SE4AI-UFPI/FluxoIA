@@ -104,6 +104,54 @@ class TestUsersAndAuth:
         assert del_res.status_code == 204
         assert not User.objects.filter(id=user_id).exists()
 
+    def test_admin_creates_supervisor_with_scoped_permissions(self):
+        admin = User.objects.create_superuser(
+            email='admin@secti.pi.gov.br',
+            nome='Admin SECTI',
+            password='AdminPassword@123',
+        )
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post(
+            '/api/usuarios/',
+            {
+                'email': 'supervisora@sdu.pi.gov.br',
+                'nome': 'Supervisora do Setor',
+                'password': 'SenhaForte@123',
+                'papel': PapelUsuario.SUPERVISOR,
+                'cpf': '529.982.247-25',
+                'secretaria': 'SDU Leste',
+                'setor': 'Protocolo',
+                'setores_vinculados': ['Protocolo', 'Licenciamento'],
+                'permissoes': [
+                    'aprovar_fluxos',
+                    'acessar_dashboard',
+                    'gerar_editar_diagramas_institucionais',
+                    'exportar_artefatos',
+                ],
+                'is_active': True,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 201, response.data
+        assert response.data['papel'] == PapelUsuario.SUPERVISOR
+        assert response.data['cpf'] == '52998224725'
+        assert response.data['setores_vinculados'] == ['Protocolo', 'Licenciamento']
+        assert response.data['permissoes'] == [
+            'aprovar_fluxos',
+            'acessar_dashboard',
+            'gerar_editar_diagramas_institucionais',
+            'exportar_artefatos',
+        ]
+
+        invalid_permission = self.client.patch(
+            f"/api/usuarios/{response.data['id']}/",
+            {'permissoes': ['executar_atividades']},
+            format='json',
+        )
+        assert invalid_permission.status_code == 400
+
     def test_non_admin_cannot_create_or_delete_other_users(self):
         u1 = User.objects.create_user(
             email='u1@sdu.pi.gov.br',
@@ -124,6 +172,10 @@ class TestUsersAndAuth:
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_res.data['access']}")
 
+        list_res = self.client.get('/api/usuarios/')
+        assert list_res.status_code == 200
+        assert [user['id'] for user in list_res.data] == [str(u1.id)]
+
         # Servidor comum não pode criar usuários via /api/usuarios/
         res_create = self.client.post(
             '/api/usuarios/',
@@ -138,7 +190,16 @@ class TestUsersAndAuth:
 
         # Servidor comum não pode editar nem deletar outro usuário
         res_patch = self.client.patch(f'/api/usuarios/{u2.id}/', {'nome': 'Hack'}, format='json')
-        assert res_patch.status_code == 403
+        assert res_patch.status_code == 404
+
+        self_patch = self.client.patch(
+            f'/api/usuarios/{u1.id}/',
+            {'setor': 'Outro setor', 'permissoes': ['aprovar_fluxos']},
+            format='json',
+        )
+        assert self_patch.status_code == 200
+        assert self_patch.data['setor'] == ''
+        assert self_patch.data['permissoes'] == []
 
         res_del = self.client.delete(f'/api/usuarios/{u1.id}/')
         assert res_del.status_code == 403

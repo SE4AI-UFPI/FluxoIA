@@ -9,6 +9,7 @@ def listar_usuarios(
     secretaria: str | None = None,
     setor: str | None = None,
     is_active: str | None = None,
+    usuario_solicitante: User | None = None,
 ) -> QuerySet[User]:
     """Lista usuários do sistema aplicando filtros opcionais."""
     qs = User.objects.all()
@@ -25,6 +26,9 @@ def listar_usuarios(
     if is_active is not None:
         ativo = is_active.lower() in ('true', '1', 'yes')
         qs = qs.filter(is_active=ativo)
+
+    if usuario_solicitante and usuario_solicitante.papel != PapelUsuario.ADMIN:
+        qs = qs.filter(pk=usuario_solicitante.pk)
 
     return qs
 
@@ -57,6 +61,10 @@ def atualizar_usuario(*, usuario_alvo: User, dados: dict, usuario_solicitante: U
     if usuario_solicitante.papel != PapelUsuario.ADMIN:
         dados_limpos.pop('papel', None)
         dados_limpos.pop('is_active', None)
+        dados_limpos.pop('secretaria', None)
+        dados_limpos.pop('setor', None)
+        dados_limpos.pop('setores_vinculados', None)
+        dados_limpos.pop('permissoes', None)
 
     password = dados_limpos.pop('password', None)
 

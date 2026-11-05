@@ -5,17 +5,25 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import type { PapelUsuario } from '@/types/auth'
+import { OperationalDashboard } from '@/features/dashboard/operational/OperationalDashboard'
 
 const PAPEL_LABEL: Record<PapelUsuario, string> = {
   servidor: 'Servidor',
   validador: 'Chefe do Setor (Validador)',
   admin: 'Administrador',
+  supervisor: 'Supervisor de Setor',
+  coordenador: 'Coordenador',
+  operacional: 'Usuário Operacional',
 }
 
 export function DashboardPlaceholder() {
   const { user, logout } = useAuth()
 
   if (!user) return null
+
+  if (user.papel === 'operacional' || user.papel === 'servidor') {
+    return <OperationalDashboard user={user} logout={logout} />
+  }
 
   return (
     <div className="min-h-screen bg-fx-fundo text-fx-grafite flex flex-col">

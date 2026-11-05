@@ -1,6 +1,6 @@
 # FluxoIA
 
-Ferramenta para ajudar servidores públicos a **mapear processos**. O servidor responde a uma entrevista guiada, a IA propõe o diagrama BPMN, e o chefe do setor revisa e aprova.
+Ferramenta para ajudar servidores públicos a **mapear processos** por meio de entrevistas guiadas e diagramas BPMN.
 
 Projeto da disciplina de Tópicos Avançados em Computação Inteligente (UFPI) para a SECTI.
 
@@ -10,19 +10,23 @@ Projeto da disciplina de Tópicos Avançados em Computação Inteligente (UFPI) 
 
 Nas secretarias, o mapeamento de processos é manual, leva meses e depende de poucas pessoas que dominam a técnica. O FluxoIA quer deixar esse trabalho mais rápido e mais simples, sem exigir que o servidor conheça BPMN.
 
-## Proposta
+## Funcionalidades
 
-1. O servidor responde a uma entrevista guiada sobre o processo do seu setor.
-2. A IA monta o fluxo (setores, etapas, decisões) e o sistema o converte em BPMN.
-3. O servidor revisa, edita no diagrama ou pede ajustes por texto.
-4. O chefe do setor confere e aprova ou devolve. Cada aprovação vira uma versão guardada, com motivo e norma.
-5. O resultado sai em `.bpmn` (editável) e PDF.
+- **Autenticação e perfis:** acesso por usuário e controle de menus conforme o perfil.
+- **Gestão de usuários:** cadastro administrativo com perfil, setor e permissões complementares.
+- **Dashboard operacional:** resumo de processos e lista com busca e filtros por setor e status.
+- **Mapeamento de processos:** assistente em quatro etapas para identificar o processo, conduzir a entrevista, gerar o BPMN e registrar a avaliação.
 
-A IA não tem poder de decisão.
+## Fluxo de Mapeamento
 
-## Status
+1. **Dados iniciais:** nome, setor, objetivo, descrição e normas relacionadas.
+2. **Entrevista guiada:** perguntas sobre início, atividades, áreas envolvidas, sequência, responsáveis, aprovações, regras, exceções, documentos, sistemas e encerramento.
+3. **Fluxo BPMN:** geração do diagrama a partir das respostas, com navegação e exportação em BPMN/XML, SVG e PDF.
+4. **Avaliação:** registro de feedback, regeneração com controle de versão e confirmação para encaminhamento ao gestor.
 
-Fase de viabilidade e concepção. Próximas etapas: prova de conceito do componente de IA e desenvolvimento do MVP.
+## Estado Atual
+
+O cadastro de usuários é integrado à API Django. O mapeamento de processos ainda funciona como protótipo no navegador: rascunhos e histórico ficam na sessão atual, e o BPMN é montado a partir das respostas. Integração com IA, persistência de processos e validação efetiva pelo gestor são etapas futuras.
 
 ## Equipe
 
