@@ -6,6 +6,14 @@ import { Label } from '@/components/ui/label'
 import type { ProcessInfo } from '../types/process.types'
 import type { ProcessInfoErrors } from '../validations/process.schema'
 
+const DEFAULT_SECTORS = [
+  'SDU: Protocolo',
+  'SDU: Licenciamento',
+  'SDU: CEU - DAP',
+  'SECTI: Governança Digital',
+  'SEAD: Gestão de Processos',
+]
+
 function FieldError({ children }: { children?: string }) {
   return children ? <p className="text-xs text-fx-alerta">{children}</p> : null
 }
@@ -27,6 +35,13 @@ export function ProcessInfoStep({
   onSave: () => void
   onNext: () => void
 }) {
+  const sectorOptions = Array.from(
+    new Set([
+      ...(info.sector ? [info.sector] : []),
+      ...(sectors.length > 0 ? sectors : DEFAULT_SECTORS),
+    ]),
+  )
+
   return (
     <Card>
       <CardHeader>
@@ -51,14 +66,16 @@ export function ProcessInfoStep({
             <Label htmlFor="process-sector">Setor / Unidade *</Label>
             <select
               id="process-sector"
-              value={info.sector}
+              value={info.sector || sectorOptions[0] || ''}
               onChange={(event) => onChange('sector', event.target.value)}
               aria-invalid={Boolean(errors.sector)}
               className="h-10 w-full rounded-sm border border-fx-linha bg-white px-3 text-sm text-fx-grafite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul"
             >
-              {sectors.length === 0 ? (
-                <option value="">Nenhum setor vinculado à sua conta</option>
-              ) : sectors.map((sector) => <option key={sector} value={sector}>{sector}</option>)}
+              {sectorOptions.map((sector) => (
+                <option key={sector} value={sector}>
+                  {sector}
+                </option>
+              ))}
             </select>
             <FieldError>{errors.sector}</FieldError>
           </div>

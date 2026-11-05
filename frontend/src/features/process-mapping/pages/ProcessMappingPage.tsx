@@ -4,7 +4,7 @@ import { AlertCircle, ArrowLeft, Check, Save } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Usuario } from '@/types/auth'
+import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 import { BPMNGenerationStep } from '../components/BPMNGenerationStep'
 import { FeedbackStep } from '../components/FeedbackStep'
 import { InterviewStep } from '../components/InterviewStep'
@@ -12,7 +12,11 @@ import { ProcessInfoStep } from '../components/ProcessInfoStep'
 import { ProcessStatus } from '../components/ProcessStatus'
 import { ProcessWizard } from '../components/ProcessWizard'
 import { useProcessWizard } from '../hooks/useProcessWizard'
-import { INTERVIEW_QUESTIONS } from '../services/interview.service'
+import {
+  fetchPerguntasEntrevista,
+  FALLBACK_INTERVIEW_QUESTIONS,
+  type InterviewQuestion,
+} from '../services/interview.service'
 import type { InterviewAnswerKey, ProcessStep } from '../types/process.types'
 import { getInterviewErrors, validateFeedback, validateProcessInfo } from '../validations/process.schema'
 
@@ -40,7 +44,20 @@ export function ProcessMappingPage() {
   const [infoErrors, setInfoErrors] = React.useState<ReturnType<typeof validateProcessInfo>>({})
   const [pageError, setPageError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
+  const [questions, setQuestions] = React.useState<InterviewQuestion[]>(FALLBACK_INTERVIEW_QUESTIONS)
   const wizard = useProcessWizard(user ?? EMPTY_USER)
+
+  React.useEffect(() => {
+    let active = true
+    fetchPerguntasEntrevista().then((data) => {
+      if (active && data.length > 0) {
+        setQuestions(data)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   if (!user) return null
 
@@ -65,7 +82,7 @@ export function ProcessMappingPage() {
     const errors = getInterviewErrors(process.answers)
     const firstMissingKey = Object.keys(errors)[0] as InterviewAnswerKey | undefined
     if (firstMissingKey) {
-      const questionIndex = INTERVIEW_QUESTIONS.findIndex(({ id }) => id === firstMissingKey)
+      const questionIndex = questions.findIndex(({ id }) => id === firstMissingKey)
       wizard.updateQuestionIndex(Math.max(0, questionIndex))
       setPageError('Responda às perguntas obrigatórias para finalizar a entrevista.')
       return
@@ -112,7 +129,7 @@ export function ProcessMappingPage() {
               <span className="max-w-48 truncate text-sm font-semibold text-fx-marinho">{user.nome}</span>
               <span className="max-w-48 truncate text-xs text-fx-cinza">{user.email}</span>
             </div>
-            <Badge variant="secondary" className="hidden sm:inline-flex">Usuário Operacional</Badge>
+            <Badge variant="secondary" className="hidden sm:inline-flex">{PAPEL_LABEL[user.papel]}</Badge>
             <Button variant="outline" size="sm" onClick={logout}>Sair</Button>
           </div>
         </div>
@@ -162,6 +179,7 @@ export function ProcessMappingPage() {
         )}
         {process.step === 2 && (
           <InterviewStep
+            questions={questions}
             answers={process.answers}
             questionIndex={process.questionIndex}
             onAnswer={wizard.updateAnswer}
