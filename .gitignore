@@ -26,3 +26,7 @@ dist-ssr/
 *.swp
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
+
+# Documentos de referência com dados pessoais (não versionar)
+FLUXOGRAMAS - AAD e CEU.pdf
