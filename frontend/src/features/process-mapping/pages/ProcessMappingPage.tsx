@@ -193,6 +193,8 @@ export function ProcessMappingPage() {
           <BPMNGenerationStep
             process={process}
             lastSavedAt={wizard.lastSavedAt}
+            isGenerating={wizard.isGeneratingBpmn}
+            generationError={wizard.aiGenerationError}
             onGenerate={wizard.generateBpmn}
             onBack={() => changeStep(2, 'Em Entrevista')}
             onContinue={continueToFeedback}

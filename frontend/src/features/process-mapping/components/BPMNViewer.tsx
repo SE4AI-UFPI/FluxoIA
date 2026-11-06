@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Download, Expand, FileCode2, FileDown, Minus, Plus } from 'lucide-react'
+import { Download, Expand, FileCode2, FileDown, Maximize2, Minus, Plus } from 'lucide-react'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
@@ -47,10 +47,17 @@ export function BPMNViewer({ xml, filename }: { xml: string; filename: string })
     importGenerationRef.current = importGeneration
     setLoading(true)
     setError(null)
+
     viewer.importXML(xml)
       .then(() => {
         if (importGenerationRef.current !== importGeneration) return
-        viewer.get<CanvasControls>('canvas').zoom('fit-viewport')
+        const canvas = viewer.get<CanvasControls>('canvas')
+        canvas.zoom('fit-viewport')
+        const currentScale = canvas.viewbox().scale
+        // Se o fit-viewport resultar em zoom excessivamente reduzido (< 0.65), ajusta para leitura confortável
+        if (currentScale < 0.65) {
+          canvas.zoom(0.75)
+        }
         setLoading(false)
       })
       .catch((cause: unknown) => {
@@ -64,8 +71,14 @@ export function BPMNViewer({ xml, filename }: { xml: string; filename: string })
   function zoomBy(amount: number) {
     const canvas = viewerRef.current?.get<CanvasControls>('canvas')
     if (!canvas) return
-    const nextScale = Math.min(2.5, Math.max(0.35, canvas.viewbox().scale + amount))
+    const nextScale = Math.min(2.5, Math.max(0.15, canvas.viewbox().scale + amount))
     canvas.zoom(nextScale)
+  }
+
+  function setExactZoom(targetScale: number | 'fit-viewport') {
+    const canvas = viewerRef.current?.get<CanvasControls>('canvas')
+    if (!canvas) return
+    canvas.zoom(targetScale)
   }
 
   async function exportXml() {
@@ -125,12 +138,32 @@ export function BPMNViewer({ xml, filename }: { xml: string; filename: string })
   return (
     <section aria-label="Diagrama BPMN" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-fx-cinza">Arraste o diagrama para mover. Use os controles para ajustar o zoom.</p>
+        <p className="text-xs text-fx-cinza">Arraste para navegar pelo fluxo. Use os botões de zoom para ampliar detalhes ou ajustar à tela.</p>
         <div className="flex flex-wrap items-center gap-1">
-          <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => zoomBy(-0.2)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            title="Ajustar diagrama inteiro na tela"
+            onClick={() => setExactZoom('fit-viewport')}
+          >
+            <Maximize2 className="h-3.5 w-3.5 mr-1 text-fx-azul" /> Ajustar
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2 text-xs font-mono font-medium"
+            title="Zoom 100% tamanho real"
+            onClick={() => setExactZoom(1.0)}
+          >
+            100%
+          </Button>
+          <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => zoomBy(-0.15)}>
             <Minus className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Aumentar zoom" title="Aumentar zoom" onClick={() => zoomBy(0.2)}>
+          <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Aumentar zoom" title="Aumentar zoom" onClick={() => zoomBy(0.15)}>
             <Plus className="h-4 w-4" />
           </Button>
           <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Tela cheia" title="Tela cheia" onClick={() => void toggleFullscreen()}>
@@ -147,7 +180,7 @@ export function BPMNViewer({ xml, filename }: { xml: string; filename: string })
           </Button>
         </div>
       </div>
-      <div className="relative h-90 overflow-hidden rounded-sm border border-fx-linha bg-white sm:h-115" ref={containerRef}>
+      <div className="relative h-125 overflow-hidden rounded-sm border border-fx-linha bg-white sm:h-160 shadow-inner" ref={containerRef}>
         {loading && <div className="absolute inset-0 z-10 flex items-center justify-center bg-fx-papel/85 text-sm text-fx-cinza">Carregando diagrama...</div>}
         {error && <div role="alert" className="absolute inset-x-3 top-3 z-20 rounded-sm bg-fx-alerta/10 p-3 text-sm text-fx-alerta">{error}</div>}
       </div>
