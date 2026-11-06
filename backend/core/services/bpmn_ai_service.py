@@ -227,54 +227,52 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         if visited.get(node_id, 0) == 0:
             dfs_cycle(node_id)
 
-    # 2. Ranking topológico dos nós no DAG direto
+    # 2. Ordem topológica estrita no DAG direto (excluindo back-edges)
     dag_adj = defaultdict(list)
-    dag_in_degree = defaultdict(int)
-    for u in all_nodes:
-        dag_in_degree[u] = 0
-
+    dag_rev_adj = defaultdict(list)
     for fl in estrutura.fluxos:
         if (fl.origem, fl.destino) not in back_edges and fl.origem in elem_map and fl.destino in elem_map:
             dag_adj[fl.origem].append(fl.destino)
-            dag_in_degree[fl.destino] += 1
+            dag_rev_adj[fl.destino].append(fl.origem)
 
-    queue = deque([u for u in all_nodes if dag_in_degree[u] == 0])
-    ranks: dict[str, int] = {u: 0 for u in all_nodes if dag_in_degree[u] == 0}
+    in_degrees = {e.id: len(dag_rev_adj[e.id]) for e in estrutura.elementos}
+    queue = deque([e.id for e in estrutura.elementos if in_degrees[e.id] == 0])
+    topo_order: list[str] = []
 
     while queue:
         curr = queue.popleft()
-        curr_rank = ranks.get(curr, 0)
+        topo_order.append(curr)
         for neighbor in dag_adj[curr]:
-            if curr_rank + 1 > ranks.get(neighbor, 0):
-                ranks[neighbor] = curr_rank + 1
-            dag_in_degree[neighbor] -= 1
-            if dag_in_degree[neighbor] == 0:
+            in_degrees[neighbor] -= 1
+            if in_degrees[neighbor] == 0:
                 queue.append(neighbor)
 
-    for u in all_nodes:
-        if u not in ranks:
-            ranks[u] = 0
+    for elem in estrutura.elementos:
+        if elem.id not in topo_order:
+            topo_order.append(elem.id)
 
-    # 3. Alocação de colunas sem colisão na mesma raia
-    nodes_sorted = sorted(all_nodes, key=lambda nid: (ranks[nid], elem_map[nid].raia_id))
+    # 3. Alocação progressiva de colunas garantindo col(destino) > col(origem)
     lane_columns: dict[str, set[int]] = defaultdict(set)
     final_col: dict[str, int] = {}
 
-    for nid in nodes_sorted:
+    for nid in topo_order:
         elem = elem_map[nid]
         lane_id = elem.raia_id if elem.raia_id in raia_ids else default_raia_id
-        c = ranks[nid]
+        valid_parents = [p for p in dag_rev_adj[nid] if p in final_col]
+        min_col = max([final_col[p] + 1 for p in valid_parents], default=0)
+
+        c = min_col
         while c in lane_columns[lane_id]:
             c += 1
         lane_columns[lane_id].add(c)
         final_col[nid] = c
 
     # 4. Cálculo das posições (x, y, width, height)
-    LANE_HEIGHT = 160
+    LANE_HEIGHT = 165
     POOL_X = 120
     POOL_Y = 80
     COL_START_X = 220
-    COL_STEP_X = 190
+    COL_STEP_X = 195
 
     total_cols = max(max(final_col.values()) + 1, 3) if final_col else 3
     POOL_WIDTH = max(800, (COL_START_X - POOL_X) + total_cols * COL_STEP_X + 80)
