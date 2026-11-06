@@ -213,3 +213,100 @@ class TestProcessDomainAndGovernance:
         assert str(aprovado_res.data['aprovado_por']) == str(self.supervisor.id)
         assert aprovado_res.data['aprovado_em'] is not None
         assert len(aprovado_res.data['revisoes_governanca']) == 2
+
+    def test_generate_bpmn_via_ai_gateway(self, monkeypatch):
+        from core.services.llm_client import LLMClient, LLMCompletionResult
+
+        def fake_gerar_json(self_client, *, system_prompt, user_prompt, temperature=0.1, usuario_identificador=None):
+            estrutura_mock = {
+                'resumo_modelo': 'Fluxo dividido entre Protocolo e Licenciamento com decisão de conformidade.',
+                'raias': [
+                    {'id': 'Lane_Protocolo', 'nome': 'SDU: Protocolo'},
+                    {'id': 'Lane_Licenciamento', 'nome': 'SDU: Licenciamento'},
+                ],
+                'elementos': [
+                    {
+                        'id': 'Start_1',
+                        'tipo': 'startEvent',
+                        'nome': 'Requerimento recebido',
+                        'raia_id': 'Lane_Protocolo',
+                        'origem_entrevista': 'trigger',
+                    },
+                    {
+                        'id': 'Task_1',
+                        'tipo': 'task',
+                        'nome': 'Conferir documentação inicial',
+                        'raia_id': 'Lane_Protocolo',
+                        'origem_entrevista': 'activities',
+                    },
+                    {
+                        'id': 'Gateway_1',
+                        'tipo': 'exclusiveGateway',
+                        'nome': 'Documentação completa?',
+                        'raia_id': 'Lane_Licenciamento',
+                        'origem_entrevista': 'approvals',
+                    },
+                    {
+                        'id': 'Task_2',
+                        'tipo': 'serviceTask',
+                        'nome': 'Emitir alvará no SEI',
+                        'raia_id': 'Lane_Licenciamento',
+                        'origem_entrevista': 'systems',
+                    },
+                    {
+                        'id': 'End_1',
+                        'tipo': 'endEvent',
+                        'nome': 'Alvará expedido',
+                        'raia_id': 'Lane_Licenciamento',
+                        'origem_entrevista': 'completion',
+                    },
+                ],
+                'fluxos': [
+                    {'id': 'Flow_1', 'origem': 'Start_1', 'destino': 'Task_1', 'condicao': ''},
+                    {'id': 'Flow_2', 'origem': 'Task_1', 'destino': 'Gateway_1', 'condicao': ''},
+                    {'id': 'Flow_3', 'origem': 'Gateway_1', 'destino': 'Task_2', 'condicao': 'Sim'},
+                    {'id': 'Flow_4', 'origem': 'Task_2', 'destino': 'End_1', 'condicao': ''},
+                ],
+            }
+            return estrutura_mock, LLMCompletionResult(
+                content='{}',
+                model='gemini/gemini-2.0-flash',
+                provider='litellm',
+                usage={'prompt_tokens': 210, 'completion_tokens': 140, 'total_tokens': 350},
+            )
+
+        monkeypatch.setattr(LLMClient, 'gerar_json', fake_gerar_json)
+
+        self.client.force_authenticate(user=self.operacional)
+        create_res = self.client.post(
+            '/api/processos/',
+            {
+                'nome': 'Emissão de Alvará de Construção',
+                'setor': 'SDU: Protocolo',
+                'objetivo': 'Emitir alvará após análise técnica.',
+            },
+            format='json',
+        )
+        proc_id = create_res.data['id']
+
+        ai_res = self.client.post(
+            f'/api/processos/{proc_id}/gerar-bpmn-ia/',
+            {
+                'respostas': {
+                    'trigger': 'Entrada de requerimento no protocolo',
+                    'activities': 'Conferir documentação; Analisar projeto; Emitir alvará no SEI',
+                    'areasInvolved': 'SDU: Protocolo e SDU: Licenciamento',
+                    'approvals': 'Verificação de conformidade documental',
+                    'completion': 'Alvará expedido ao requerente',
+                }
+            },
+            format='json',
+        )
+        assert ai_res.status_code == 201, ai_res.data
+        assert ai_res.data['status'] == StatusProcesso.EM_MODELAGEM
+        assert ai_res.data['versao_atual'] == '1.0.0'
+        assert '<bpmn:laneSet' in ai_res.data['bpmn_xml_atual']
+        assert '<bpmn:exclusiveGateway id="Gateway_1"' in ai_res.data['bpmn_xml_atual']
+        assert len(ai_res.data['versoes_bpmn']) == 1
+        assert ai_res.data['versoes_bpmn'][0]['estrutura_json']['meta_ia']['provider'] == 'litellm'
+

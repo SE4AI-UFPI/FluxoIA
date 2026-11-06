@@ -1,0 +1,553 @@
+from collections import defaultdict, deque
+from typing import Literal
+from xml.sax.saxutils import escape
+from pydantic import BaseModel, Field, ValidationError
+
+from core.models import OrigemVersaoBPMN, Processo, User, VersaoFluxoBPMN
+from .llm_client import LLMClient, LLMServiceError
+from . import process_service
+
+
+class BpmnRaiaSpec(BaseModel):
+    id: str = Field(..., description='Identificador único da raia, ex: Lane_1')
+    nome: str = Field(..., description='Nome do setor, área ou responsável da raia')
+
+
+class BpmnElementoSpec(BaseModel):
+    id: str = Field(..., description='Identificador único do elemento, ex: Start_1, Task_1, Gateway_1, End_1')
+    tipo: Literal['startEvent', 'task', 'serviceTask', 'exclusiveGateway', 'endEvent']
+    nome: str = Field(..., description='Rótulo curto e claro da etapa ou decisão')
+    raia_id: str = Field(..., description='ID da raia (BpmnRaiaSpec.id) onde este elemento ocorre')
+    origem_entrevista: str = Field(
+        default='activities',
+        description='Chave da pergunta da entrevista que originou este elemento (ex: trigger, activities, approvals, exceptions, completion)',
+    )
+
+
+class BpmnFluxoSpec(BaseModel):
+    id: str = Field(..., description='Identificador único da seta, ex: Flow_1')
+    origem: str = Field(..., description='ID do elemento de origem')
+    destino: str = Field(..., description='ID do elemento de destino')
+    condicao: str = Field(default='', description='Rótulo da condição em saídas de gateway (ex: Aprovado, Ajustes)')
+
+
+class BpmnFichaTecnica(BaseModel):
+    legenda: list[str] = Field(
+        default_factory=list,
+        description="Símbolos e regras de desvio aplicáveis ao fluxo, ex: '▲ - Caso seja notificado (Em caso de pendência)', '▼ - Caso seja autuado'",
+    )
+    observacoes_prazo: str = Field(
+        default='',
+        description="Prazos limites para sanear pendências, diligências ou encerramento (ex: 'Todas as pendências deverão ser solucionadas em até 90 dias...').",
+    )
+    informacoes_gerais: str = Field(
+        default='',
+        description='Resumo conciso do objetivo institucional do processo e fundamentação legal de referência.',
+    )
+    sistemas: list[str] = Field(
+        default_factory=list,
+        description="Sistemas ou plataformas utilizados na tramitação, ex: 'Plataforma SEI', 'Construa Fácil', 'Processo Físico', etc.",
+    )
+    documentacao: list[str] = Field(
+        default_factory=list,
+        description='Checklist dos documentos obrigatórios ou peças instrutórias necessárias para autuação e tramitação.',
+    )
+    taxas: list[str] = Field(
+        default_factory=list,
+        description="Taxas, guias ou emolumentos com códigos se houver, ou indicação de 'Não se aplica / Processo sem taxas'.",
+    )
+
+
+class BpmnEstruturaGerada(BaseModel):
+    resumo_modelo: str = Field(default='', description='Breve explicação de como o fluxo foi organizado')
+    ficha_tecnica: BpmnFichaTecnica = Field(
+        default_factory=BpmnFichaTecnica,
+        description='Ficha técnica institucional e quadros de rodapé complementares ao diagrama',
+    )
+    raias: list[BpmnRaiaSpec] = Field(min_length=1)
+    elementos: list[BpmnElementoSpec] = Field(min_length=2)
+    fluxos: list[BpmnFluxoSpec] = Field(min_length=1)
+
+
+SYSTEM_PROMPT_BPMN = """Você é um arquiteto especialista em mapeamento de processos públicos em BPMN 2.0.
+Sua tarefa é analisar os dados iniciais e as respostas da entrevista guiada de um processo público e produzir a estrutura lógica completa do diagrama BPMN 2.0 acompanhada da ficha técnica institucional (quadros de rodapé) em formato JSON estrito.
+
+DIRETRIZES DE MODELAGEM BPMN:
+1. IDENTIFICAÇÃO DO TIPO DE PROCESSO E PRIMEIRA RAIA:
+   - Se for um processo de ATENDIMENTO AO CIDADÃO / EXTERNO (ex: licenças, certidões, alvarás solicitados por pessoa física ou jurídica externa): a primeira raia DEVE ser o solicitante (ex: "Requerente" ou "Cidadão").
+   - Se for um processo INTERNO ENTRE UNIDADES (ex: requisições de compras, memorandos, processos de RH, pareceres entre secretarias): a primeira raia DEVE ser a própria unidade administrativa demandante (ex: "Divisão Solicitante", "Gabinete", "Coordenação de RH"), sem criar raia externa.
+2. NUMERAÇÃO DAS ETAPAS:
+   - Numere os nomes das tarefas sequencialmente no fluxo principal: "1. Solicitar abertura...", "2. Conferir documentação...", "3. Emitir taxa...", etc.
+   - Tarefas de desvios, pendências ou diligências devem receber subnumerações claras: "2.1 Notificar pendência", "2.2 Sanear pendência", etc.
+3. TRATAMENTO CONDICIONAL DE TAXAS:
+   - Se a resposta de taxas indicar cobrança de guias/taxas (ex: taxa de serviço, taxa de licença): modele as etapas de emissão da guia pelo setor e de pagamento/anexação de comprovante pelo solicitante, e preencha as taxas com códigos no campo `taxas`.
+   - Se for processo gratuito ou interno sem taxas: NÃO crie tarefas de pagamento e registre no campo `taxas`: ["Não se aplica / Processo sem taxas"].
+4. PENDÊNCIAS, EXCEÇÕES E PRAZOS:
+   - Modele gateways exclusivos para pontos de conferência/vistoria e gere o ramo de pendência/notificação e saneamento.
+   - No campo `observacoes_prazo` da ficha técnica, registre claramente o prazo limite informado (ex: "Todas as pendências deverão ser solucionadas em até 90 dias. Após esse prazo, o processo será encerrado.").
+5. FICHA TÉCNICA INSTITUCIONAL (QUADROS DE RODAPÉ):
+   - Preencha os campos `ficha_tecnica` (`legenda`, `observacoes_prazo`, `informacoes_gerais`, `sistemas`, `documentacao`, `taxas`) para permitir a exibição da folha completa do processo.
+
+FORMATO DE RETORNO OBRIGATÓRIO (JSON PURO):
+{
+  "resumo_modelo": "Explicação concisa das raias e decisões modeladas",
+  "ficha_tecnica": {
+    "legenda": ["▲ Caso seja notificado / Em caso de pendência", "▼ Caso seja autuado"],
+    "observacoes_prazo": "Todas as pendências deverão ser solucionadas em até 90 dias. Após esse prazo, o processo será encerrado.",
+    "informacoes_gerais": "Finalidade e fundamentação legal do processo.",
+    "sistemas": ["Plataforma SEI"],
+    "documentacao": ["Requerimento", "Documento de identificação com foto", "Comprovante de endereço"],
+    "taxas": ["Taxa de Serviço (Cód.: 71130004)"]
+  },
+  "raias": [
+    { "id": "Lane_1", "nome": "Requerente" },
+    { "id": "Lane_2", "nome": "SDU: Protocolo" }
+  ],
+  "elementos": [
+    {
+      "id": "Start_1",
+      "tipo": "startEvent",
+      "nome": "Início da solicitação",
+      "raia_id": "Lane_1",
+      "origem_entrevista": "trigger"
+    },
+    {
+      "id": "Task_1",
+      "tipo": "task",
+      "nome": "1. Solicitar abertura do processo",
+      "raia_id": "Lane_1",
+      "origem_entrevista": "trigger"
+    },
+    {
+      "id": "Task_2",
+      "tipo": "task",
+      "nome": "2. Analisar documentação e conferir requisitos",
+      "raia_id": "Lane_2",
+      "origem_entrevista": "activities"
+    },
+    {
+      "id": "Gateway_1",
+      "tipo": "exclusiveGateway",
+      "nome": "Documentação conforme?",
+      "raia_id": "Lane_2",
+      "origem_entrevista": "approvals"
+    },
+    {
+      "id": "Task_2_1",
+      "tipo": "task",
+      "nome": "2.1 Sanear pendências apontadas",
+      "raia_id": "Lane_1",
+      "origem_entrevista": "exceptions"
+    },
+    {
+      "id": "End_1",
+      "tipo": "endEvent",
+      "nome": "Processo concluído e emitido",
+      "raia_id": "Lane_2",
+      "origem_entrevista": "completion"
+    }
+  ],
+  "fluxos": [
+    { "id": "Flow_1", "origem": "Start_1", "destino": "Task_1", "condicao": "" },
+    { "id": "Flow_2", "origem": "Task_1", "destino": "Task_2", "condicao": "" },
+    { "id": "Flow_3", "origem": "Task_2", "destino": "Gateway_1", "condicao": "" },
+    { "id": "Flow_4", "origem": "Gateway_1", "destino": "End_1", "condicao": "Sim" },
+    { "id": "Flow_5", "origem": "Gateway_1", "destino": "Task_2_1", "condicao": "Com pendência" },
+    { "id": "Flow_6", "origem": "Task_2_1", "destino": "Task_2", "condicao": "" }
+  ]
+}
+"""
+
+
+def montar_prompt_usuario(processo: Processo, respostas: dict[str, str]) -> str:
+    return f"""DADOS DO PROCESSO PÚBLICO:
+- Nome do Processo: {processo.nome}
+- Secretaria / Órgão: {processo.secretaria or 'Não informada'}
+- Setor Principal: {processo.setor}
+- Objetivo: {processo.objetivo}
+- Descrição Geral: {processo.descricao or 'Não informada'}
+- Legislação / Normas: {processo.legislacao or 'Não informada'}
+
+RESPOSTAS DA ENTREVISTA GUIADA (CHAVE -> RESPOSTA DO SERVIDOR):
+1. [trigger] Início do Processo / Solicitante: {respostas.get('trigger', '')}
+2. [activities] Atividades Principais: {respostas.get('activities', '')}
+3. [areasInvolved] Áreas e Unidades Envolvidas: {respostas.get('areasInvolved', '')}
+4. [sequence] Sequência da Tramitação: {respostas.get('sequence', '')}
+5. [responsibles] Responsáveis por Etapa: {respostas.get('responsibles', '')}
+6. [approvals] Aprovações e Vistorias: {respostas.get('approvals', '')}
+7. [rules] Regras de Negócio: {respostas.get('rules', '')}
+8. [fees] Taxas e Custos: {respostas.get('fees', '')}
+9. [exceptions] Pendências, Exceções e Prazos: {respostas.get('exceptions', '')}
+10. [documents] Documentação e Anexos: {respostas.get('documents', '')}
+11. [systems] Sistemas Utilizados: {respostas.get('systems', '')}
+12. [completion] Encerramento e Entrega: {respostas.get('completion', '')}
+
+Gere o JSON estruturado do fluxo BPMN 2.0 e da Ficha Técnica correspondente."""
+
+
+def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str:
+    """
+    Converte a estrutura semântica validada (raias, tarefas, gateways e fluxos)
+    em um XML BPMN 2.0 completo com Collaboration, LaneSet e coordenadas BPMNDI.
+    Aplica rank topológico para compactar as colunas e roteamento ortogonal inteligente
+    para evitar que arestas atravessem o interior de tarefas.
+    """
+    proc_slug = str(processo.id).replace('-', '')[:12]
+    collab_id = f'Collaboration_{proc_slug}'
+    participant_id = f'Participant_{proc_slug}'
+    process_id = f'Process_{proc_slug}'
+    laneset_id = f'LaneSet_{proc_slug}'
+
+    raias = estrutura.raias
+    raia_ids = {r.id for r in raias}
+    default_raia_id = raias[0].id
+    elem_map = {e.id: e for e in estrutura.elementos}
+    raia_index_map = {r.id: idx for idx, r in enumerate(raias)}
+    all_nodes = [e.id for e in estrutura.elementos]
+
+    # 1. Identifica ciclos / back-edges (ex: retorno de saneamento de pendência ou diligência)
+    adj = defaultdict(list)
+    for fl in estrutura.fluxos:
+        if fl.origem in elem_map and fl.destino in elem_map:
+            adj[fl.origem].append(fl.destino)
+
+    visited: dict[str, int] = {}
+    back_edges: set[tuple[str, str]] = set()
+
+    def dfs_cycle(u: str) -> None:
+        visited[u] = 1
+        for v_node in adj[u]:
+            if visited.get(v_node) == 1:
+                back_edges.add((u, v_node))
+            elif visited.get(v_node, 0) == 0:
+                dfs_cycle(v_node)
+        visited[u] = 2
+
+    for node_id in all_nodes:
+        if visited.get(node_id, 0) == 0:
+            dfs_cycle(node_id)
+
+    # 2. Ranking topológico dos nós no DAG direto
+    dag_adj = defaultdict(list)
+    dag_in_degree = defaultdict(int)
+    for u in all_nodes:
+        dag_in_degree[u] = 0
+
+    for fl in estrutura.fluxos:
+        if (fl.origem, fl.destino) not in back_edges and fl.origem in elem_map and fl.destino in elem_map:
+            dag_adj[fl.origem].append(fl.destino)
+            dag_in_degree[fl.destino] += 1
+
+    queue = deque([u for u in all_nodes if dag_in_degree[u] == 0])
+    ranks: dict[str, int] = {u: 0 for u in all_nodes if dag_in_degree[u] == 0}
+
+    while queue:
+        curr = queue.popleft()
+        curr_rank = ranks.get(curr, 0)
+        for neighbor in dag_adj[curr]:
+            if curr_rank + 1 > ranks.get(neighbor, 0):
+                ranks[neighbor] = curr_rank + 1
+            dag_in_degree[neighbor] -= 1
+            if dag_in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    for u in all_nodes:
+        if u not in ranks:
+            ranks[u] = 0
+
+    # 3. Alocação de colunas sem colisão na mesma raia
+    nodes_sorted = sorted(all_nodes, key=lambda nid: (ranks[nid], elem_map[nid].raia_id))
+    lane_columns: dict[str, set[int]] = defaultdict(set)
+    final_col: dict[str, int] = {}
+
+    for nid in nodes_sorted:
+        elem = elem_map[nid]
+        lane_id = elem.raia_id if elem.raia_id in raia_ids else default_raia_id
+        c = ranks[nid]
+        while c in lane_columns[lane_id]:
+            c += 1
+        lane_columns[lane_id].add(c)
+        final_col[nid] = c
+
+    # 4. Cálculo das posições (x, y, width, height)
+    LANE_HEIGHT = 160
+    POOL_X = 120
+    POOL_Y = 80
+    COL_START_X = 220
+    COL_STEP_X = 190
+
+    total_cols = max(max(final_col.values()) + 1, 3) if final_col else 3
+    POOL_WIDTH = max(800, (COL_START_X - POOL_X) + total_cols * COL_STEP_X + 80)
+    POOL_HEIGHT = len(raias) * LANE_HEIGHT
+
+    bounds_map: dict[str, tuple[int, int, int, int]] = {}
+    for nid in all_nodes:
+        elem = elem_map[nid]
+        rid = elem.raia_id if elem.raia_id in raia_ids else default_raia_id
+        lane_idx = raia_index_map[rid]
+        lane_center_y = POOL_Y + lane_idx * LANE_HEIGHT + (LANE_HEIGHT // 2)
+
+        c = final_col[nid]
+        center_x = COL_START_X + c * COL_STEP_X
+
+        if elem.tipo in ('startEvent', 'endEvent'):
+            w, h = 36, 36
+        elif elem.tipo == 'exclusiveGateway':
+            w, h = 50, 50
+        else:
+            w, h = 135, 75
+
+        x = center_x - (w // 2)
+        y = lane_center_y - (h // 2)
+        bounds_map[nid] = (x, y, w, h)
+
+    # 5. Agrupamento por raia para o XML
+    elementos_por_raia: dict[str, list[str]] = {r.id: [] for r in raias}
+    for elem in estrutura.elementos:
+        rid = elem.raia_id if elem.raia_id in raia_ids else default_raia_id
+        elementos_por_raia[rid].append(elem.id)
+
+    lanes_xml_parts: list[str] = []
+    for r in raias:
+        refs = ''.join(
+            f'<bpmn:flowNodeRef>{escape(eid)}</bpmn:flowNodeRef>'
+            for eid in elementos_por_raia.get(r.id, [])
+        )
+        lanes_xml_parts.append(
+            f'<bpmn:lane id="{escape(r.id)}" name="{escape(r.nome)}">{refs}</bpmn:lane>'
+        )
+
+    nodes_xml_parts = [
+        f'<bpmn:{elem.tipo} id="{escape(elem.id)}" name="{escape(elem.nome)}" />'
+        for elem in estrutura.elementos
+    ]
+
+    flows_xml_parts: list[str] = []
+    for fl in estrutura.fluxos:
+        if fl.origem not in bounds_map or fl.destino not in bounds_map:
+            continue
+        name_attr = f' name="{escape(fl.condicao)}"' if fl.condicao.strip() else ''
+        flows_xml_parts.append(
+            f'<bpmn:sequenceFlow id="{escape(fl.id)}" sourceRef="{escape(fl.origem)}" targetRef="{escape(fl.destino)}"{name_attr} />'
+        )
+
+    shapes_xml_parts = [
+        f'<bpmndi:BPMNShape id="{participant_id}_di" bpmnElement="{participant_id}" isHorizontal="true">'
+        f'<dc:Bounds x="{POOL_X}" y="{POOL_Y}" width="{POOL_WIDTH}" height="{POOL_HEIGHT}" />'
+        f'</bpmndi:BPMNShape>'
+    ]
+
+    for idx, r in enumerate(raias):
+        ly = POOL_Y + idx * LANE_HEIGHT
+        shapes_xml_parts.append(
+            f'<bpmndi:BPMNShape id="{escape(r.id)}_di" bpmnElement="{escape(r.id)}" isHorizontal="true">'
+            f'<dc:Bounds x="{POOL_X + 30}" y="{ly}" width="{POOL_WIDTH - 30}" height="{LANE_HEIGHT}" />'
+            f'</bpmndi:BPMNShape>'
+        )
+
+    for elem in estrutura.elementos:
+        x, y, w, h = bounds_map[elem.id]
+        marker = ' isMarkerVisible="true"' if elem.tipo == 'exclusiveGateway' else ''
+        shapes_xml_parts.append(
+            f'<bpmndi:BPMNShape id="{escape(elem.id)}_di" bpmnElement="{escape(elem.id)}"{marker}>'
+            f'<dc:Bounds x="{x}" y="{y}" width="{w}" height="{h}" />'
+            f'</bpmndi:BPMNShape>'
+        )
+
+    # 6. Roteamento inteligente de Edges (sem atravessar o meio das caixas)
+    edges_xml_parts: list[str] = []
+    for fl in estrutura.fluxos:
+        if fl.origem not in bounds_map or fl.destino not in bounds_map:
+            continue
+        u_elem = elem_map[fl.origem]
+        v_elem = elem_map[fl.destino]
+        sx, sy, sw, sh = bounds_map[fl.origem]
+        tx, ty, tw, th = bounds_map[fl.destino]
+        u_lane = u_elem.raia_id if u_elem.raia_id in raia_ids else default_raia_id
+        v_lane = v_elem.raia_id if v_elem.raia_id in raia_ids else default_raia_id
+
+        is_back = (fl.origem, fl.destino) in back_edges or tx < sx + 10
+
+        if is_back:
+            # Retorno de ciclo (saneamento / diligência):
+            # Sai do topo da origem, passa por cima na margem limpa e desce no topo do destino
+            start_x = sx + (sw // 2)
+            start_y = sy
+            end_x = tx + (tw // 2)
+            end_y = ty
+            loop_y = min(sy, ty) - 25
+
+            waypoints = (
+                f'<di:waypoint x="{start_x}" y="{start_y}" />'
+                f'<di:waypoint x="{start_x}" y="{loop_y}" />'
+                f'<di:waypoint x="{end_x}" y="{loop_y}" />'
+                f'<di:waypoint x="{end_x}" y="{end_y}" />'
+            )
+        elif u_lane == v_lane:
+            # Na mesma raia
+            start_y = sy + (sh // 2)
+            end_y = ty + (th // 2)
+
+            # Verifica se há algum obstáculo intermediário na mesma raia
+            x_min = sx + sw
+            x_max = tx
+            has_obstacle = False
+            for oid in all_nodes:
+                if oid == fl.origem or oid == fl.destino:
+                    continue
+                oelem = elem_map[oid]
+                o_lane = oelem.raia_id if oelem.raia_id in raia_ids else default_raia_id
+                if o_lane == u_lane:
+                    ox, oy, ow, oh = bounds_map[oid]
+                    if x_min <= ox <= x_max:
+                        has_obstacle = True
+                        break
+
+            if has_obstacle:
+                # Contorna por baixo na margem inferior da raia
+                bypass_y = sy + sh + 20
+                start_x = sx + sw
+                end_x = tx
+                turn1_x = start_x + 15
+                turn2_x = end_x - 15
+                waypoints = (
+                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
+                    f'<di:waypoint x="{turn1_x}" y="{start_y}" />'
+                    f'<di:waypoint x="{turn1_x}" y="{bypass_y}" />'
+                    f'<di:waypoint x="{turn2_x}" y="{bypass_y}" />'
+                    f'<di:waypoint x="{turn2_x}" y="{end_y}" />'
+                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
+                )
+            else:
+                # Linha direta limpa
+                start_x = sx + sw
+                end_x = tx
+                waypoints = f'<di:waypoint x="{start_x}" y="{start_y}" /><di:waypoint x="{end_x}" y="{end_y}" />'
+        else:
+            # Entre raias distintas
+            if u_elem.tipo == 'exclusiveGateway' and fl.condicao and 'sim' not in fl.condicao.lower():
+                # Desvio de gateway: sai pelo topo ou base em direção à raia do destino
+                if ty < sy:
+                    start_x = sx + (sw // 2)
+                    start_y = sy
+                else:
+                    start_x = sx + (sw // 2)
+                    start_y = sy + sh
+                end_x = tx
+                end_y = ty + (th // 2)
+                waypoints = (
+                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
+                    f'<di:waypoint x="{start_x}" y="{end_y}" />'
+                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
+                )
+            else:
+                start_x = sx + sw
+                start_y = sy + (sh // 2)
+                end_x = tx
+                end_y = ty + (th // 2)
+                turn_x = max(start_x + 20, min(start_x + 35, end_x - 20))
+                waypoints = (
+                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
+                    f'<di:waypoint x="{turn_x}" y="{start_y}" />'
+                    f'<di:waypoint x="{turn_x}" y="{end_y}" />'
+                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
+                )
+
+        edges_xml_parts.append(
+            f'<bpmndi:BPMNEdge id="{escape(fl.id)}_di" bpmnElement="{escape(fl.id)}">{waypoints}</bpmndi:BPMNEdge>'
+        )
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_{proc_slug}" targetNamespace="https://fluxoia.gov.br/bpmn">
+  <bpmn:collaboration id="{collab_id}">
+    <bpmn:participant id="{participant_id}" name="{escape(processo.nome)}" processRef="{process_id}" />
+  </bpmn:collaboration>
+  <bpmn:process id="{process_id}" name="{escape(processo.nome)}" isExecutable="false">
+    <bpmn:laneSet id="{laneset_id}">
+      {''.join(lanes_xml_parts)}
+    </bpmn:laneSet>
+    {''.join(nodes_xml_parts)}
+    {''.join(flows_xml_parts)}
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="{collab_id}">
+      {''.join(shapes_xml_parts)}
+      {''.join(edges_xml_parts)}
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>"""
+
+
+def proximo_numero_versao(versao_atual: str) -> str:
+    partes = [int(p) if p.isdigit() else 0 for p in (versao_atual or '1.0.0').split('.')]
+    while len(partes) < 3:
+        partes.append(0)
+    return f'{partes[0]}.{partes[1]}.{partes[2] + 1}'
+
+
+def gerar_fluxo_bpmn_com_ia(
+    *,
+    processo: Processo,
+    usuario: User,
+    llm_client: LLMClient | None = None,
+) -> VersaoFluxoBPMN:
+    """
+    Orquestra a geração do diagrama BPMN 2.0 via IA a partir da entrevista guiada do processo,
+    valida a estrutura com Pydantic, compila o XML BPMN 2.0 com raias e persiste a nova VersaoFluxoBPMN.
+    """
+    entrevista = getattr(processo, 'entrevista', None)
+    respostas: dict[str, str] = dict(entrevista.respostas) if entrevista else {}
+
+    if not respostas.get('trigger', '').strip() or not respostas.get('activities', '').strip():
+        raise LLMServiceError(
+            'Responda pelo menos às perguntas obrigatórias da entrevista (Início e Atividades) antes de gerar o BPMN com IA.'
+        )
+
+    client = llm_client or LLMClient()
+    user_prompt = montar_prompt_usuario(processo, respostas)
+
+    dados_json, completion_res = client.gerar_json(
+        system_prompt=SYSTEM_PROMPT_BPMN,
+        user_prompt=user_prompt,
+        temperature=0.1,
+        usuario_identificador=usuario.email,
+    )
+
+    try:
+        estrutura = BpmnEstruturaGerada.model_validate(dados_json)
+    except ValidationError as exc:
+        raise LLMServiceError(
+            f'A estrutura retornada pelo modelo de IA não atendeu ao esquema BPMN esperado: {exc}'
+        ) from exc
+
+    bpmn_xml = compilar_bpmn_xml(processo, estrutura)
+
+    tem_versoes = processo.versoes_bpmn.exists()
+    nova_versao = proximo_numero_versao(processo.versao_atual) if tem_versoes else '1.0.0'
+    origem = OrigemVersaoBPMN.REGENERACAO_IA if tem_versoes else OrigemVersaoBPMN.IA
+    motivo = (
+        f'Regeneração via IA ({completion_res.model})'
+        if tem_versoes
+        else f'Geração inicial via IA ({completion_res.model})'
+    )
+
+    estrutura_salva = {
+        **estrutura.model_dump(),
+        'meta_ia': {
+            'provider': completion_res.provider,
+            'model': completion_res.model,
+            'usage': completion_res.usage,
+        },
+    }
+
+    return process_service.registrar_versao_bpmn(
+        processo=processo,
+        usuario=usuario,
+        dados={
+            'numero_versao': nova_versao,
+            'bpmn_xml': bpmn_xml,
+            'estrutura_json': estrutura_salva,
+            'origem': origem,
+            'motivo_alteracao': motivo,
+        },
+    )

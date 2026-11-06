@@ -126,7 +126,9 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# LLM Configuration (FMware / OpenAI-compatible local server)
-LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'http://localhost:11434/v1')
-LLM_MODEL = os.getenv('LLM_MODEL', 'qwen2.5:7b')
-LLM_API_KEY = os.getenv('LLM_API_KEY', 'ollama')
+# LLM Configuration (LiteLLM / DeepSeek / OpenAI / Local Ollama)
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'litellm')  # 'litellm' | 'openai_compatible'
+LLM_MODEL = os.getenv('LLM_MODEL', 'gemini/gemini-2.0-flash')
+LLM_BASE_URL = os.getenv('LLM_BASE_URL', '')
+LLM_API_KEY = os.getenv('LLM_API_KEY', '')
+LLM_TIMEOUT = int(os.getenv('LLM_TIMEOUT', '60'))
