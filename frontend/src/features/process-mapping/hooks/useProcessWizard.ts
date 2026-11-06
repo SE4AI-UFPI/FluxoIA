@@ -1,10 +1,10 @@
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Usuario } from '@/types/auth'
-import { generateProcessBpmn } from '../services/bpmn.service'
 import {
   createInitialProcess,
   fetchProcessoByIdFromApi,
+  generateBpmnWithAiFromApi,
   hasRequiredProcessInfo,
   loadProcessDraft,
   mapApiProcessoToWizardState,
@@ -49,6 +49,8 @@ export function useProcessWizard(user: Usuario) {
     loadProcessDraft(user.id, defaultSector),
   )
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null)
+  const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
+  const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
   const versionControl = useVersionControl()
 
   React.useEffect(() => {
@@ -73,7 +75,7 @@ export function useProcessWizard(user: Usuario) {
         setLastSavedAt(mapped.updatedAt)
       })
       .catch(() => {
-        // Fallback silencioso para o rascunho da sessão caso o ID seja de demonstração ou offline
+        // Fallback silencioso para o rascunho da sessão
       })
 
     return () => {
@@ -144,38 +146,35 @@ export function useProcessWizard(user: Usuario) {
     void persistToBackend(saved)
   }
 
-  function generateBpmn() {
-    const version = process.bpmnXml
-      ? versionControl.nextCorrectionVersion(process.version)
-      : versionControl.initialVersion
-    const reason = process.bpmnXml ? 'Nova versão gerada após solicitação de ajustes' : 'Geração inicial do fluxo BPMN'
-    const bpmnXml = generateProcessBpmn(process.info, process.answers)
-    const historyEntry = versionControl.createHistoryEntry({ user: user.nome, version, reason })
-    const nextState: ProcessWizardState = {
-      ...process,
-      bpmnXml,
-      version,
-      step: 3,
-      status: 'Em Modelagem BPMN',
-      updatedAt: new Date().toISOString(),
-      history: [...process.history, historyEntry],
-    }
-    setProcess(nextState)
+  async function generateBpmn() {
+    setIsGeneratingBpmn(true)
+    setAiGenerationError(null)
 
-    void (async () => {
-      const backendId = (await persistToBackend(nextState)) ?? nextState.backendId
-      if (!backendId) return
-      try {
-        await saveBpmnVersionToApi(backendId, {
-          numero_versao: version,
-          bpmn_xml: bpmnXml,
-          origem: 'ia',
-          motivo_alteracao: reason,
-        })
-      } catch {
-        // Fallback silencioso
+    try {
+      const backendId = (await persistToBackend(process)) ?? process.backendId
+      if (!backendId) {
+        throw new Error('Não foi possível sincronizar o processo com o servidor para iniciar a geração por IA.')
       }
-    })()
+
+      const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
+      const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+      const nextState: ProcessWizardState = {
+        ...mapped,
+        step: 3,
+        status: 'Em Modelagem BPMN',
+      }
+      setProcess(nextState)
+      saveProcessDraft(nextState)
+      setLastSavedAt(nextState.updatedAt)
+    } catch (error) {
+      setAiGenerationError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível gerar o diagrama BPMN com a IA. Verifique a configuração do provedor no backend.',
+      )
+    } finally {
+      setIsGeneratingBpmn(false)
+    }
   }
 
   function requestRegeneration() {
@@ -213,7 +212,7 @@ export function useProcessWizard(user: Usuario) {
       try {
         const backendId = (await persistToBackend(process)) ?? process.backendId
         if (!backendId) return
-        if (process.bpmnXml) {
+        if (process.bpmnXml && process.history.length === 0) {
           await saveBpmnVersionToApi(backendId, {
             numero_versao: process.version,
             bpmn_xml: process.bpmnXml,
@@ -238,6 +237,7 @@ export function useProcessWizard(user: Usuario) {
     if (processoQueryId) {
       setSearchParams({})
     }
+    setAiGenerationError(null)
     const fresh = createInitialProcess(user.id, defaultSector)
     setProcess(fresh)
     saveProcessDraft(fresh)
@@ -247,6 +247,8 @@ export function useProcessWizard(user: Usuario) {
     process,
     allowedSectors,
     lastSavedAt,
+    isGeneratingBpmn,
+    aiGenerationError,
     updateInfo,
     updateAnswer,
     updateQuestionIndex,

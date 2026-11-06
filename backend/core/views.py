@@ -18,7 +18,8 @@ from .serializers import (
     UserSerializer,
     VersaoFluxoBPMNSerializer,
 )
-from .services import process_service, user_service
+from .services import bpmn_ai_service, process_service, user_service
+from .services.llm_client import LLMServiceError
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -157,6 +158,32 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             usuario=request.user,
             dados=serializer.validated_data,
         )
+        processo_atualizado = self.get_queryset().get(pk=processo.pk)
+        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='gerar-bpmn-ia')
+    def gerar_bpmn_ia(self, request, pk=None):
+        processo = self.get_object()
+
+        respostas_payload = request.data.get('respostas')
+        if isinstance(respostas_payload, dict) and respostas_payload:
+            process_service.atualizar_processo(
+                processo=processo,
+                dados={'entrevista': {'respostas': respostas_payload}},
+            )
+            processo.refresh_from_db()
+
+        try:
+            bpmn_ai_service.gerar_fluxo_bpmn_com_ia(
+                processo=processo,
+                usuario=request.user,
+            )
+        except LLMServiceError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
         return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
 

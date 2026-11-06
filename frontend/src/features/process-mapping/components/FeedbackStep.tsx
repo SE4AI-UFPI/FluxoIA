@@ -11,6 +11,7 @@ import type {
   ProcessWizardState,
 } from '../types/process.types'
 import { BPMNViewer } from './BPMNViewer'
+import { ProcessFichaTecnicaCards } from './ProcessFichaTecnicaCards'
 import { ProcessStatus } from './ProcessStatus'
 import { VersionHistory } from './VersionHistory'
 
@@ -273,6 +274,7 @@ export function FeedbackStep({
           <div className="min-w-0 space-y-3">
             <h3 className="text-sm font-semibold text-fx-marinho">Fluxo BPMN · {process.info.name}</h3>
             {process.bpmnXml && <BPMNViewer xml={process.bpmnXml} filename={process.code ?? 'processo-bpmn'} />}
+            <ProcessFichaTecnicaCards process={process} />
           </div>
           <details open={feedbackOpen} onToggle={(event) => setFeedbackOpen(event.currentTarget.open)} className="min-w-0 rounded-sm border border-fx-linha bg-fx-papel p-4">
             <summary className="cursor-pointer text-sm font-semibold text-fx-marinho focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul">

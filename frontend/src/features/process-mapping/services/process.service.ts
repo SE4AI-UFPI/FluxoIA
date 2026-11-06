@@ -82,6 +82,7 @@ export function createInitialProcess(ownerId: string, defaultSector: string): Pr
       responsibles: '',
       approvals: '',
       rules: '',
+      fees: '',
       exceptions: '',
       documents: '',
       systems: '',
@@ -114,6 +115,10 @@ export function mapApiProcessoToWizardState(
 ): ProcessWizardState {
   const base = createInitialProcess(api.criado_por || fallbackUserId, defaultSector)
   const step = Math.min(4, Math.max(1, api.etapa_atual || 1)) as ProcessStep
+  const versoes = api.versoes_bpmn ?? []
+  const latestVersao = versoes[versoes.length - 1]
+  const fichaTecnica = latestVersao?.estrutura_json?.ficha_tecnica ?? null
+
   return {
     ...base,
     id: api.id,
@@ -134,6 +139,7 @@ export function mapApiProcessoToWizardState(
     step,
     status: mapApiStatusToWizardStatus(api.status),
     bpmnXml: api.bpmn_xml_atual ?? null,
+    fichaTecnica,
     version: api.versao_atual || INITIAL_PROCESS_VERSION,
     history: (api.versoes_bpmn ?? []).map((versao) => ({
       id: versao.id,
@@ -288,6 +294,15 @@ export async function saveBpmnVersionToApi(
   return apiClient.post(`/api/processos/${backendId}/versoes-bpmn/`, {
     origem: 'ia',
     ...payload,
+  })
+}
+
+export async function generateBpmnWithAiFromApi(
+  backendId: string,
+  respostas: Record<string, string>,
+): Promise<ApiProcesso> {
+  return apiClient.post<ApiProcesso>(`/api/processos/${backendId}/gerar-bpmn-ia/`, {
+    respostas,
   })
 }
 

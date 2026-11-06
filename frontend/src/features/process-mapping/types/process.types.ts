@@ -17,10 +17,20 @@ export type InterviewAnswerKey =
   | 'responsibles'
   | 'approvals'
   | 'rules'
+  | 'fees'
   | 'exceptions'
   | 'documents'
   | 'systems'
   | 'completion'
+
+export interface ProcessFichaTecnica {
+  legenda: string[]
+  observacoes_prazo: string
+  informacoes_gerais: string
+  sistemas: string[]
+  documentacao: string[]
+  taxas: string[]
+}
 
 export interface ProcessInfo {
   name: string
@@ -70,6 +80,7 @@ export interface ProcessWizardState {
   step: ProcessStep
   status: ProcessStatus
   bpmnXml: string | null
+  fichaTecnica?: ProcessFichaTecnica | null
   version: string
   history: ProcessHistoryEntry[]
   feedback: ProcessFeedback
@@ -122,6 +133,13 @@ export interface ApiProcesso {
     id: string
     numero_versao: string
     bpmn_xml: string
+    estrutura_json?: {
+      resumo_modelo?: string
+      ficha_tecnica?: ProcessFichaTecnica
+      raias?: Array<{ id: string; nome: string }>
+      elementos?: Array<{ id: string; tipo: string; nome: string; raia_id: string; origem_entrevista?: string }>
+      fluxos?: Array<{ id: string; origem: string; destino: string; condicao?: string }>
+    }
     motivo_alteracao: string
     gerado_por_nome: string
     criado_em: string
