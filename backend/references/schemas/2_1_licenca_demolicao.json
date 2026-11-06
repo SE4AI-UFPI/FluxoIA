@@ -1,0 +1,495 @@
+{
+  "processo": "Licença de Demolição",
+  "objetivo": "Licenças de Demolição são emitidas para garantir que a edificação a ser demolida possui o licenciamento autorizado pela Superintendência de Desenvolvimento Urbano - Leste",
+  "setores": [
+    {
+      "id": "s1",
+      "nome": "Requerente"
+    },
+    {
+      "id": "s2",
+      "nome": "SDU: Protocolo"
+    },
+    {
+      "id": "s3",
+      "nome": "SDU: CEU"
+    },
+    {
+      "id": "s4",
+      "nome": "SDU: CEU - DAP"
+    },
+    {
+      "id": "s5",
+      "nome": "SDU: CEU - AAD"
+    },
+    {
+      "id": "s6",
+      "nome": "SDU: CECF"
+    }
+  ],
+  "elementos": [
+    {
+      "id": "e1",
+      "numero": "1",
+      "tipo": "inicio",
+      "nome": "Solicitação através da plataforma SEI",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [
+        "SEI (sei.pmt.pi.gov.br/sei)"
+      ],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 1"
+    },
+    {
+      "id": "e2",
+      "numero": "2",
+      "tipo": "tarefa",
+      "nome": "Analisa a documentação e notifica por e-mail, caso possua alguma pendência",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 2"
+    },
+    {
+      "id": "e2_1",
+      "numero": "2.1",
+      "tipo": "tarefa",
+      "nome": "Caso seja notificado, o solicitante deve resolver a pendência",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 2.1",
+      "ramo": "pendencia"
+    },
+    {
+      "id": "e3",
+      "numero": "3",
+      "tipo": "tarefa",
+      "nome": "Emite taxa de serviço",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [
+        "Taxa de serviço (cód. 71130004)"
+      ],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 3"
+    },
+    {
+      "id": "e4",
+      "numero": "4",
+      "tipo": "tarefa",
+      "nome": "Paga taxa e anexa comprovante de pagamento ao processo",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 4"
+    },
+    {
+      "id": "e5",
+      "numero": "5",
+      "tipo": "tarefa",
+      "nome": "Encaminha processo à CEU",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 5"
+    },
+    {
+      "id": "e6",
+      "numero": "6",
+      "tipo": "tarefa",
+      "nome": "Encaminha processo à Divisão de Análise de Projetos - DAP",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 6"
+    },
+    {
+      "id": "e7",
+      "numero": "7",
+      "tipo": "tarefa",
+      "nome": "Distribui processo à Assessoria de Apoio à Divisão - AAD",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 7"
+    },
+    {
+      "id": "e8",
+      "numero": "8",
+      "tipo": "tarefa",
+      "nome": "Vistoria é realizada",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 8"
+    },
+    {
+      "id": "e8_1",
+      "numero": "8.1",
+      "tipo": "tarefa",
+      "nome": "Caso seja notificado via e-mail, o solicitante deve resolver a pendência",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 8.1",
+      "ramo": "pendencia"
+    },
+    {
+      "id": "e8_2",
+      "numero": "8.2",
+      "tipo": "tarefa",
+      "nome": "Retorna o processo para análise",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 8.2",
+      "ramo": "pendencia"
+    },
+    {
+      "id": "e6_1",
+      "numero": "6.1",
+      "tipo": "tarefa",
+      "nome": "Caso seja autuado, o processo é encaminhado à CECF para emissão de multa",
+      "setor": "s6",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 6.1",
+      "ramo": "autuacao"
+    },
+    {
+      "id": "e6_2",
+      "numero": "6.2",
+      "tipo": "tarefa",
+      "nome": "Após o pagamento da multa e anexo do comprovante de pagamento, o processo retorna para análise",
+      "setor": "s6",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 6.2",
+      "ramo": "autuacao"
+    },
+    {
+      "id": "e9",
+      "numero": "9",
+      "tipo": "tarefa",
+      "nome": "Caso não possua nenhuma pendência, o processo segue para deferimento",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 9"
+    },
+    {
+      "id": "e10",
+      "numero": "10",
+      "tipo": "tarefa",
+      "nome": "Encaminha processo ao Protocolo para solicitar taxa referente à emissão de licença",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [
+        "Taxa de emissão de licença (cód. 71130001)"
+      ],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 10"
+    },
+    {
+      "id": "e11",
+      "numero": "11",
+      "tipo": "tarefa",
+      "nome": "Emite taxa referente à emissão de licença",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [
+        "Taxa de emissão de licença (cód. 71130001)"
+      ],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 11"
+    },
+    {
+      "id": "e12",
+      "numero": "12",
+      "tipo": "tarefa",
+      "nome": "Paga taxa e anexa comprovante de pagamento ao processo",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 12"
+    },
+    {
+      "id": "e13",
+      "numero": "13",
+      "tipo": "tarefa",
+      "nome": "Retorna processo",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 13"
+    },
+    {
+      "id": "e14",
+      "numero": "14",
+      "tipo": "tarefa",
+      "nome": "Atribui processo à Assessoria de Apoio à Divisão - AAD",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 14"
+    },
+    {
+      "id": "e15",
+      "numero": "15",
+      "tipo": "tarefa",
+      "nome": "Conclui análise",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 15"
+    },
+    {
+      "id": "e16",
+      "numero": "16",
+      "tipo": "tarefa",
+      "nome": "Licença é emitida",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 16"
+    },
+    {
+      "id": "e17",
+      "numero": "17",
+      "tipo": "tarefa",
+      "nome": "Assina licença e encaminha à CEU",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 17"
+    },
+    {
+      "id": "e18",
+      "numero": "18",
+      "tipo": "tarefa",
+      "nome": "Conclui o processo",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 18"
+    },
+    {
+      "id": "e19",
+      "numero": "19",
+      "tipo": "fim",
+      "nome": "Encerra o processo",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.1 · FLUXOGRAMAS - AAD e CEU, p. 3, passo 19"
+    }
+  ],
+  "fluxos": [
+    {
+      "de": "e1",
+      "para": "e2",
+      "condicao": ""
+    },
+    {
+      "de": "e2",
+      "para": "e2_1",
+      "condicao": "caso notificado"
+    },
+    {
+      "de": "e2",
+      "para": "e3",
+      "condicao": ""
+    },
+    {
+      "de": "e2_1",
+      "para": "e3",
+      "condicao": ""
+    },
+    {
+      "de": "e3",
+      "para": "e4",
+      "condicao": ""
+    },
+    {
+      "de": "e4",
+      "para": "e5",
+      "condicao": ""
+    },
+    {
+      "de": "e5",
+      "para": "e6",
+      "condicao": ""
+    },
+    {
+      "de": "e6",
+      "para": "e7",
+      "condicao": ""
+    },
+    {
+      "de": "e7",
+      "para": "e8",
+      "condicao": ""
+    },
+    {
+      "de": "e8",
+      "para": "e8_1",
+      "condicao": "caso notificado"
+    },
+    {
+      "de": "e8",
+      "para": "e9",
+      "condicao": ""
+    },
+    {
+      "de": "e8",
+      "para": "e6_1",
+      "condicao": "caso autuado"
+    },
+    {
+      "de": "e8_1",
+      "para": "e8_2",
+      "condicao": ""
+    },
+    {
+      "de": "e8_2",
+      "para": "e9",
+      "condicao": ""
+    },
+    {
+      "de": "e6_1",
+      "para": "e6_2",
+      "condicao": ""
+    },
+    {
+      "de": "e6_2",
+      "para": "e9",
+      "condicao": ""
+    },
+    {
+      "de": "e9",
+      "para": "e10",
+      "condicao": ""
+    },
+    {
+      "de": "e10",
+      "para": "e11",
+      "condicao": ""
+    },
+    {
+      "de": "e11",
+      "para": "e12",
+      "condicao": ""
+    },
+    {
+      "de": "e12",
+      "para": "e13",
+      "condicao": ""
+    },
+    {
+      "de": "e13",
+      "para": "e14",
+      "condicao": ""
+    },
+    {
+      "de": "e14",
+      "para": "e15",
+      "condicao": ""
+    },
+    {
+      "de": "e15",
+      "para": "e16",
+      "condicao": ""
+    },
+    {
+      "de": "e16",
+      "para": "e17",
+      "condicao": ""
+    },
+    {
+      "de": "e17",
+      "para": "e18",
+      "condicao": ""
+    },
+    {
+      "de": "e18",
+      "para": "e19",
+      "condicao": ""
+    }
+  ],
+  "gabarito": {
+    "codigo": "2.1",
+    "fonte": "FLUXOGRAMAS - AAD e CEU.pdf, p. 3",
+    "informacoes_gerais": "Licenças de Demolição são emitidas para garantir que a edificação a ser demolida possui o licenciamento autorizado pela Superintendência de Desenvolvimento Urbano - Leste",
+    "sistema": [
+      "Plataforma SEI"
+    ],
+    "documentacao_processo_sei": [
+      "Requerimento",
+      "CPF/RG do proprietário",
+      "Registro de imóvel (Atualizado em até 1 ano)",
+      "Certidão Negativa de Débitos do IPTU",
+      "Memória de Cálculo",
+      "Levantamento Arquitetônico para fins de demolição",
+      "ART/RRT referente ao levantamento arquitetônico para fins de demolição",
+      "Memorial Descritivo",
+      "Planta baixa do imóvel (Quando for imóvel da COHAB/EMGERPI)"
+    ],
+    "legenda": [
+      "▲ Caso seja notificado",
+      "▼ Caso seja autuado"
+    ],
+    "observacoes": [
+      "Todas as pendências deverão ser solucionadas em até 90 dias. Após esse prazo, o processo será encerrado."
+    ],
+    "notas_da_transcricao": [
+      "Nos passos 6.1 e 6.2 (ramo de autuação), os números 6.x aparecem na ordem do desenho, depois de 8.x; a ligação 8 → 6.1 é a seta amarela do PDF.",
+      "Os ramos de pendência (▲) e de autuação (▼) não têm porta de decisão no desenho; foram transcritos como ligações com condição."
+    ]
+  }
+}

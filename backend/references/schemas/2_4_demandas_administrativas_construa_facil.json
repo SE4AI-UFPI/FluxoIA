@@ -1,0 +1,285 @@
+{
+  "processo": "Demandas Administrativas: Construa Fácil",
+  "objetivo": "As Demandas Administrativas vinculadas à plataforma Construa Fácil são processos externos que podem solicitar a manutenção evolutiva ou corretiva de processos ou usuários internos. A abertura de processo torna-se necessária para registro da solicitação e resguarda juridicamente a atuação dos profissionais envolvidos na solicitação.",
+  "setores": [
+    {
+      "id": "s1",
+      "nome": "Requerente"
+    },
+    {
+      "id": "s2",
+      "nome": "SDU: Protocolo"
+    },
+    {
+      "id": "s3",
+      "nome": "SDU: CEU"
+    },
+    {
+      "id": "s4",
+      "nome": "SDU: CEU - DAP"
+    },
+    {
+      "id": "s5",
+      "nome": "SDU: CEU - AAD"
+    },
+    {
+      "id": "s6",
+      "nome": "PRODATER: CAST"
+    }
+  ],
+  "elementos": [
+    {
+      "id": "e1",
+      "numero": "1",
+      "tipo": "inicio",
+      "nome": "Solicitação através da plataforma SEI",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [
+        "SEI (sei.pmt.pi.gov.br/sei)"
+      ],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 1"
+    },
+    {
+      "id": "e2",
+      "numero": "2",
+      "tipo": "tarefa",
+      "nome": "Protocolo analisa documentação e emite a taxa de serviço",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [
+        "Taxa de serviço (cód. 71130004)"
+      ],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 2"
+    },
+    {
+      "id": "e3",
+      "numero": "3",
+      "tipo": "tarefa",
+      "nome": "Requerente paga a taxa e anexa o comprovante ao processo",
+      "setor": "s1",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 3"
+    },
+    {
+      "id": "e4",
+      "numero": "4",
+      "tipo": "tarefa",
+      "nome": "Protocolo encaminha o processo à CEU",
+      "setor": "s2",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 4"
+    },
+    {
+      "id": "e5",
+      "numero": "5",
+      "tipo": "tarefa",
+      "nome": "Encaminha processo à Divisão de Análise de Projetos - DAP",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 5"
+    },
+    {
+      "id": "e6",
+      "numero": "6",
+      "tipo": "tarefa",
+      "nome": "Distribui processo à Assessoria de Apoio à Divisão - AAD",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 6"
+    },
+    {
+      "id": "e7",
+      "numero": "7",
+      "tipo": "tarefa",
+      "nome": "Abre chamado e comunica o solicitante via e-mail sobre a requisição e o número ID do chamado",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 7"
+    },
+    {
+      "id": "e8",
+      "numero": "8",
+      "tipo": "tarefa",
+      "nome": "Chamado é aberto via CAST",
+      "setor": "s6",
+      "documentos": [],
+      "sistemas": [
+        "CAST (cast.prodater.pmt.pi.gov.br)"
+      ],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 8"
+    },
+    {
+      "id": "e9",
+      "numero": "9",
+      "tipo": "tarefa",
+      "nome": "Após a resolução do chamado, a solicitação é fechada",
+      "setor": "s6",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 9"
+    },
+    {
+      "id": "e10",
+      "numero": "10",
+      "tipo": "tarefa",
+      "nome": "Comunica o solicitante via e-mail sobre a resolução e encaminha o processo para conclusão e encerramento",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 10"
+    },
+    {
+      "id": "e10_1",
+      "numero": "10.1",
+      "tipo": "tarefa",
+      "nome": "Caso o chamado seja alguma solicitação de cancelamento, o processo é encaminhado para atualização na Receita Federal",
+      "setor": "s5",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 10.1",
+      "ramo": "cancelamento"
+    },
+    {
+      "id": "e11",
+      "numero": "11",
+      "tipo": "tarefa",
+      "nome": "Conclui o processo",
+      "setor": "s4",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 11"
+    },
+    {
+      "id": "e12",
+      "numero": "12",
+      "tipo": "fim",
+      "nome": "Encerra o processo",
+      "setor": "s3",
+      "documentos": [],
+      "sistemas": [],
+      "taxas": [],
+      "prazo": "",
+      "origem": "2.4 · FLUXOGRAMAS - AAD e CEU, p. 6, passo 12"
+    }
+  ],
+  "fluxos": [
+    {
+      "de": "e1",
+      "para": "e2",
+      "condicao": ""
+    },
+    {
+      "de": "e2",
+      "para": "e3",
+      "condicao": ""
+    },
+    {
+      "de": "e3",
+      "para": "e4",
+      "condicao": ""
+    },
+    {
+      "de": "e4",
+      "para": "e5",
+      "condicao": ""
+    },
+    {
+      "de": "e5",
+      "para": "e6",
+      "condicao": ""
+    },
+    {
+      "de": "e6",
+      "para": "e7",
+      "condicao": ""
+    },
+    {
+      "de": "e7",
+      "para": "e8",
+      "condicao": ""
+    },
+    {
+      "de": "e8",
+      "para": "e9",
+      "condicao": ""
+    },
+    {
+      "de": "e9",
+      "para": "e10",
+      "condicao": ""
+    },
+    {
+      "de": "e10",
+      "para": "e11",
+      "condicao": ""
+    },
+    {
+      "de": "e10",
+      "para": "e10_1",
+      "condicao": "caso cancelamento"
+    },
+    {
+      "de": "e10_1",
+      "para": "e11",
+      "condicao": ""
+    },
+    {
+      "de": "e11",
+      "para": "e12",
+      "condicao": ""
+    }
+  ],
+  "gabarito": {
+    "codigo": "2.4",
+    "fonte": "FLUXOGRAMAS - AAD e CEU.pdf, p. 6",
+    "informacoes_gerais": "As Demandas Administrativas vinculadas à plataforma Construa Fácil são processos externos que podem solicitar a manutenção evolutiva ou corretiva de processos ou usuários internos. A abertura de processo torna-se necessária para registro da solicitação e resguarda juridicamente a atuação dos profissionais envolvidos na solicitação.",
+    "sistema": [
+      "Plataforma SEI"
+    ],
+    "documentacao_processo_sei": [
+      "Em caso de solicitações de cancelamento: Requerimento; Cópia do Alvará; Registro de imóvel",
+      "Em caso de solicitações de correções de dados: Requerimento; Documento que comprova dado correto; Cópia do documento que deverá ser corrigido",
+      "Em caso de solicitações sobre ocorrências na plataforma: Requerimento com a descrição da ocorrência; Captura de tela ou gravação da ocorrência"
+    ],
+    "legenda": [
+      "▲ Em caso de pendência"
+    ],
+    "observacoes": [
+      "Por se tratar de demandas variadas, não há um checklist padrão de documentações a seguir. De toda forma, a documentação anexada deve comprovar que a solicitação parte exclusivamente dos responsáveis técnicos ou do proprietário vinculado ao processo. Documentações vinculadas à terceiros não serão consideradas válidas."
+    ],
+    "notas_da_transcricao": [
+      "O passo 10.1 é desenhado em linha tracejada (ramo opcional); a seta 10.1 → 11 também é tracejada.",
+      "Não há ramo de pendência com triângulo neste fluxograma, apesar da legenda."
+    ]
+  }
+}
