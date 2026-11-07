@@ -20,6 +20,7 @@ import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { BPMNLegenda } from './BPMNLegenda'
 import type { ProcessStatus } from '../types/process.types'
 import {
   canEditBpmnLayout,
@@ -604,6 +605,8 @@ export function BPMNEditor({
           </div>
         )}
       </div>
+
+      <BPMNLegenda />
     </section>
   )
 }

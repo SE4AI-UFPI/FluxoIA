@@ -1,5 +1,5 @@
 import type { ProcessStatus } from '../types/process.types'
-import { organizarDiagrama } from './bpmn-auto-layout.service'
+import { medirLayout, organizarDiagrama } from './bpmn-auto-layout.service'
 
 /**
  * Estados em que o autor ainda pode ajustar o diagrama (Fase 10).
@@ -73,4 +73,15 @@ export const EVENTOS_ESTRUTURAIS_BLOQUEADOS = [
  */
 export async function gerarLayoutAutomatico(bpmnXml: string): Promise<string> {
   return organizarDiagrama(bpmnXml)
+}
+
+/**
+ * Indica se o diagrama ainda precisa ser reorganizado: conectores atravessando
+ * formas é o sintoma visual que motivou o auto layout.
+ */
+export function diagramaPrecisaLayout(bpmnXml: string): boolean {
+  if (!bpmnXml) return false
+  const metricas = medirLayout(bpmnXml)
+  if (!metricas) return false
+  return metricas.conectoresSobreFormas > 0 || metricas.sobreposicoes > 0
 }

@@ -18,6 +18,7 @@ import {
 } from '../services/process.service'
 import {
   canEditBpmnLayout,
+  diagramaPrecisaLayout,
   gerarLayoutAutomatico,
   MOTIVO_BLOQUEIO_EDICAO,
 } from '../services/bpmn-layout.service'
@@ -98,6 +99,17 @@ export function useProcessWizard(user: Usuario) {
         setProcess(mapped)
         saveProcessDraft(mapped)
         setLastSavedAt(mapped.updatedAt)
+
+        // Diagramas gerados por versões anteriores podem ter conectores cruzando
+        // formas: reorganiza ao abrir, em modo best-effort.
+        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
+          .then((normalizado) => {
+            if (!active || normalizado === mapped) return
+            setProcess(normalizado)
+            saveProcessDraft(normalizado)
+            setLastSavedAt(normalizado.updatedAt)
+          })
+          .catch(() => undefined)
       })
       .catch(() => {
         // Fallback silencioso para o rascunho da sessão
@@ -180,8 +192,13 @@ export function useProcessWizard(user: Usuario) {
   async function aplicarLayoutAutomatico(
     estado: ProcessWizardState,
     backendId: string,
+    opcoes: { somenteSeNecessario?: boolean } = {},
   ): Promise<ProcessWizardState> {
     if (!estado.bpmnXml) return estado
+    if (!canEditBpmnLayout(estado.status)) return estado
+
+    // Evita reescrever diagramas que já estão corretos (idempotência).
+    if (opcoes.somenteSeNecessario && !diagramaPrecisaLayout(estado.bpmnXml)) return estado
 
     let organizado: string
     try {

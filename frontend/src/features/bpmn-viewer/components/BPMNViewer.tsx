@@ -14,6 +14,7 @@ import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Button } from '@/components/ui/button'
+import { BPMNLegenda } from '@/features/process-mapping/components/BPMNLegenda'
 
 interface ElementoBpmn {
   x?: number
@@ -311,6 +312,8 @@ export default function BPMNViewer({ xml, nomeArquivo }: { xml: string; nomeArqu
           </div>
         )}
       </div>
+
+      <BPMNLegenda />
     </section>
   )
 }
