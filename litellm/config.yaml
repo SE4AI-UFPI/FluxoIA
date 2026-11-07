@@ -1,0 +1,12 @@
+# Aliases de modelo expostos pelo LiteLLM Proxy (RNF-09, PD-08).
+# O backend só conhece o alias; trocar o modelo real é editar este arquivo
+# e reiniciar o serviço: docker compose restart litellm
+model_list:
+  - model_name: fluxoia-geracao
+    litellm_params:
+      # Prefixo openai/: qualquer servidor compatível com OpenAI (Ollama, vLLM).
+      model: openai/qwen2.5:7b
+      api_base: os.environ/LLM_UPSTREAM_BASE_URL
+      api_key: os.environ/LLM_UPSTREAM_API_KEY
+      # Abaixo do timeout do gunicorn (120 s), para o erro chegar ao backend.
+      timeout: 110
