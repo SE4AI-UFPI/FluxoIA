@@ -97,7 +97,7 @@ const INITIAL_FORM: FormularioUsuario = {
   setor: '',
   setores_vinculados: [],
   papel: 'operacional',
-  permissoes: [],
+  permissoes: PERMISSOES_POR_PERFIL.operacional.map((item) => item.id),
   is_active: true,
   password: '',
 }
@@ -186,7 +186,7 @@ export function UserRegistrationPage() {
       papel,
       setor: papel === 'admin' ? '' : current.setor,
       setores_vinculados: papel === 'admin' ? [] : current.setores_vinculados,
-      permissoes: [],
+      permissoes: PERMISSOES_POR_PERFIL[papel].map((item) => item.id),
     }))
   }
 
@@ -312,7 +312,7 @@ export function UserRegistrationPage() {
             <CardContent className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <TextField id="nome" label="Nome Completo" value={form.nome} onChange={(value) => updateField('nome', value)} required autoComplete="name" />
               <TextField id="cpf" label="CPF" value={form.cpf} onChange={(value) => updateField('cpf', value)} required inputMode="numeric" maxLength={14} />
-              <TextField id="email" label="E-mail Institucional" type="email" value={form.email} onChange={(value) => updateField('email', value)} required autoComplete="email" />
+              <TextField id="email" label="E-mail" type="email" value={form.email} onChange={(value) => updateField('email', value)} required autoComplete="email" />
               <TextField id="matricula" label="Matrícula" value={form.matricula} onChange={(value) => updateField('matricula', value)} />
               <TextField id="cargo" label="Cargo/Função" value={form.cargo} onChange={(value) => updateField('cargo', value)} />
               <TextField id="secretaria" label="Unidade/Setor" value={form.secretaria} onChange={(value) => updateField('secretaria', value)} required />
@@ -369,90 +369,85 @@ export function UserRegistrationPage() {
               <span>Este perfil possui acesso completo ao sistema.</span>
             </div>
           ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Escopo de Atuação</CardTitle>
-                <CardDescription>Defina a unidade e os setores que este usuário poderá acessar.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-5 sm:grid-cols-2">
-                <TextField
-                  id="setor"
-                  label={form.papel === 'supervisor' ? 'Setor Principal' : form.papel === 'coordenador' ? 'Setor de Atuação' : 'Setor Vinculado'}
-                  value={form.setor}
-                  onChange={(value) => updateField('setor', value)}
-                  required
-                />
-                {form.papel === 'supervisor' && (
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="setor-vinculado">Setores Vinculados</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="setor-vinculado"
-                        value={linkedSector}
-                        onChange={(event) => setLinkedSector(event.target.value)}
-                        placeholder="Digite um setor e pressione Enter"
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault()
-                            addLinkedSector()
-                          }
-                        }}
-                      />
-                      <Button type="button" variant="outline" size="icon" aria-label="Adicionar setor" onClick={addLinkedSector}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {form.setores_vinculados.length > 0 && (
-                      <ul className="flex flex-wrap gap-2" aria-label="Setores adicionados">
-                        {form.setores_vinculados.map((sector) => (
-                          <li key={sector} className="inline-flex items-center gap-1 rounded-sm border border-fx-linha bg-fx-nevoa/40 pl-2.5 pr-1 py-1 text-xs text-fx-marinho">
-                            {sector}
-                            <button
-                              type="button"
-                              onClick={() => updateField('setores_vinculados', form.setores_vinculados.filter((item) => item !== sector))}
-                              className="rounded-sm p-1 hover:bg-fx-nevoa focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul"
-                              aria-label={`Remover setor ${sector}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Permissões Complementares</CardTitle>
-              <CardDescription>
-                {form.papel === 'admin'
-                  ? 'O perfil administrador já possui acesso total.'
-                  : 'As opções são limitadas ao perfil selecionado.'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {form.papel === 'admin' ? (
-                <label className="flex min-h-10 items-center gap-3 rounded-sm border border-fx-linha px-3 py-2 text-sm text-fx-grafite">
-                  <input type="checkbox" checked disabled className="h-4 w-4 shrink-0 accent-fx-azul" />
-                  Treinar modelos com normas setoriais e dados internos
-                </label>
-              ) : PERMISSOES_POR_PERFIL[form.papel].map(({ id, label }) => (
-                <label key={id} className="flex min-h-10 items-center gap-3 rounded-sm border border-fx-linha px-3 py-2 text-sm text-fx-grafite">
-                  <input
-                    type="checkbox"
-                    checked={form.permissoes.includes(id)}
-                    onChange={() => togglePermission(id)}
-                    className="h-4 w-4 shrink-0 accent-fx-azul"
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl">Escopo de Atuação</CardTitle>
+                  <CardDescription>Defina a unidade e os setores que este usuário poderá acessar.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-5 sm:grid-cols-2">
+                  <TextField
+                    id="setor"
+                    label={form.papel === 'supervisor' ? 'Setor Principal' : form.papel === 'coordenador' ? 'Setor de Atuação' : 'Setor Vinculado'}
+                    value={form.setor}
+                    onChange={(value) => updateField('setor', value)}
+                    required
                   />
-                  {label}
-                </label>
-              ))}
-            </CardContent>
-          </Card>
+                  {form.papel === 'supervisor' && (
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="setor-vinculado">Setores Vinculados</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="setor-vinculado"
+                          value={linkedSector}
+                          onChange={(event) => setLinkedSector(event.target.value)}
+                          placeholder="Digite um setor e pressione Enter"
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              addLinkedSector()
+                            }
+                          }}
+                        />
+                        <Button type="button" variant="outline" size="icon" aria-label="Adicionar setor" onClick={addLinkedSector}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {form.setores_vinculados.length > 0 && (
+                        <ul className="flex flex-wrap gap-2" aria-label="Setores adicionados">
+                          {form.setores_vinculados.map((sector) => (
+                            <li key={sector} className="inline-flex items-center gap-1 rounded-sm border border-fx-linha bg-fx-nevoa/40 pl-2.5 pr-1 py-1 text-xs text-fx-marinho">
+                              {sector}
+                              <button
+                                type="button"
+                                onClick={() => updateField('setores_vinculados', form.setores_vinculados.filter((item) => item !== sector))}
+                                className="rounded-sm p-1 hover:bg-fx-nevoa focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul"
+                                aria-label={`Remover setor ${sector}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl">Permissões Complementares</CardTitle>
+                  <CardDescription>
+                    As opções são limitadas ao perfil selecionado.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {PERMISSOES_POR_PERFIL[form.papel].map(({ id, label }) => (
+                    <label key={id} className="flex min-h-10 items-center gap-3 rounded-sm border border-fx-linha px-3 py-2 text-sm text-fx-grafite">
+                      <input
+                        type="checkbox"
+                        checked={form.permissoes.includes(id)}
+                        onChange={() => togglePermission(id)}
+                        className="h-4 w-4 shrink-0 accent-fx-azul"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </CardContent>
+              </Card>
+            </>
+          )}
 
           <Card>
             <CardContent className="flex flex-col-reverse gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">

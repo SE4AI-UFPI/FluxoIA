@@ -2,7 +2,21 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 import re
-from .models import PapelUsuario, User
+from .models import (
+    DecisaoGovernanca,
+    EntrevistaProcesso,
+    ExclusaoProcesso,
+    FeedbackFluxoIA,
+    NivelEdicaoFluxo,
+    OrigemVersaoBPMN,
+    PapelUsuario,
+    PerguntaEntrevista,
+    Processo,
+    RevisaoGovernanca,
+    StatusProcesso,
+    User,
+    VersaoFluxoBPMN,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -96,7 +110,25 @@ class UserSerializer(serializers.ModelSerializer):
         if self.instance is None and not attrs.get('password'):
             raise serializers.ValidationError({'password': 'A senha é obrigatória na criação do usuário.'})
 
-        papel = attrs.get('papel', self.instance.papel if self.instance else PapelUsuario.SERVIDOR)
+        request = self.context.get('request')
+        if (
+            self.instance is not None
+            and request is not None
+            and getattr(request, 'user', None) is not None
+            and request.user.is_authenticated
+            and request.user.papel != PapelUsuario.ADMIN
+        ):
+            for campo_restrito in (
+                'papel',
+                'is_active',
+                'secretaria',
+                'setor',
+                'setores_vinculados',
+                'permissoes',
+            ):
+                attrs.pop(campo_restrito, None)
+
+        papel = attrs.get('papel', self.instance.papel if self.instance else PapelUsuario.OPERACIONAL)
         setor = attrs.get('setor', self.instance.setor if self.instance else '')
         setores_vinculados = attrs.get(
             'setores_vinculados', self.instance.setores_vinculados if self.instance else [],
@@ -130,10 +162,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
     papel = serializers.ChoiceField(
         choices=[
-            (PapelUsuario.SERVIDOR, 'Servidor'),
-            (PapelUsuario.VALIDADOR, 'Chefe do Setor (Validador)'),
+            (PapelUsuario.OPERACIONAL, 'Usuário Operacional'),
+            (PapelUsuario.COORDENADOR, 'Coordenador'),
+            (PapelUsuario.SUPERVISOR, 'Supervisor de Setor'),
         ],
-        default=PapelUsuario.SERVIDOR,
+        default=PapelUsuario.OPERACIONAL,
         required=False,
     )
 
@@ -180,3 +213,217 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         data['user'] = UserSerializer(self.user).data
         return data
+
+
+class EntrevistaProcessoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EntrevistaProcesso
+        fields = [
+            'id',
+            'pergunta_atual_idx',
+            'respostas',
+            'atualizado_em',
+        ]
+        read_only_fields = ['id', 'atualizado_em']
+
+    def validate_respostas(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('As respostas da entrevista devem ser um objeto JSON.')
+        return value
+
+
+class VersaoFluxoBPMNSerializer(serializers.ModelSerializer):
+    gerado_por_nome = serializers.CharField(source='gerado_por.nome', read_only=True, default='')
+
+    class Meta:
+        model = VersaoFluxoBPMN
+        fields = [
+            'id',
+            'numero_versao',
+            'bpmn_xml',
+            'estrutura_json',
+            'origem',
+            'motivo_alteracao',
+            'gerado_por',
+            'gerado_por_nome',
+            'criado_em',
+        ]
+        read_only_fields = ['id', 'gerado_por', 'gerado_por_nome', 'criado_em']
+
+
+class AjusteLayoutBPMNSerializer(serializers.Serializer):
+    """Ajuste exclusivamente visual do BPMN (layout/coordenadas), sem nova versão funcional."""
+
+    bpmn_xml = serializers.CharField()
+    motivo_alteracao = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255,
+        default='Ajuste visual de layout (sem alteração funcional)',
+    )
+
+    def validate_bpmn_xml(self, value: str) -> str:
+        if '<' not in value or 'definitions' not in value:
+            raise serializers.ValidationError('XML BPMN inválido.')
+        return value
+
+
+class FeedbackFluxoIASerializer(serializers.ModelSerializer):
+    PROBLEMAS_VALIDOS = {
+        'etapas_ausentes',        'raias_incorretas',
+        'decisoes_incorretas',
+        'sequencia_incorreta',
+        'aprovacoes_ausentes',
+    }
+    autor_nome = serializers.CharField(source='autor.nome', read_only=True, default='')
+    nota_precisao_geral = serializers.IntegerField(min_value=1, max_value=5, default=5)
+    clareza_entrevista = serializers.IntegerField(min_value=1, max_value=5, default=5)
+    problemas_identificados = serializers.ListField(
+        child=serializers.CharField(max_length=50),
+        required=False,
+        default=list,
+    )
+
+    class Meta:
+        model = FeedbackFluxoIA
+        fields = [
+            'id',
+            'versao_bpmn',
+            'autor',
+            'autor_nome',
+            'representa_processo',
+            'nota_precisao_geral',
+            'nivel_edicao_necessario',
+            'clareza_entrevista',
+            'problemas_identificados',
+            'observacoes',
+            'criado_em',
+        ]
+        read_only_fields = ['id', 'autor', 'autor_nome', 'criado_em']
+
+    def validate_problemas_identificados(self, value):
+        invalidos = set(value) - self.PROBLEMAS_VALIDOS
+        if invalidos:
+            raise serializers.ValidationError(
+                f'Problemas inválidos: {", ".join(sorted(invalidos))}.'
+            )
+        return value
+
+
+class RevisaoGovernancaSerializer(serializers.ModelSerializer):
+    revisor_nome = serializers.CharField(source='revisor.nome', read_only=True, default='')
+
+    class Meta:
+        model = RevisaoGovernanca
+        fields = [
+            'id',
+            'versao_bpmn',
+            'revisor',
+            'revisor_nome',
+            'decisao',
+            'parecer',
+            'criado_em',
+        ]
+        read_only_fields = ['id', 'revisor', 'revisor_nome', 'criado_em']
+
+
+class ExclusaoProcessoSerializer(serializers.ModelSerializer):
+    processo_codigo = serializers.CharField(source='processo.codigo', read_only=True, default='')
+
+    class Meta:
+        model = ExclusaoProcesso
+        fields = [
+            'id',
+            'processo',
+            'processo_codigo',
+            'usuario',
+            'usuario_nome',
+            'usuario_email',
+            'numero_versao',
+            'motivo',
+            'criado_em',
+        ]
+        read_only_fields = fields
+
+
+class ProcessoSerializer(serializers.ModelSerializer):
+    criado_por_nome = serializers.CharField(source='criado_por.nome', read_only=True, default='')
+    aprovado_por_nome = serializers.CharField(source='aprovado_por.nome', read_only=True, default='')
+    bpmn_xml_atual = serializers.SerializerMethodField()
+    entrevista = EntrevistaProcessoSerializer(required=False)
+    versoes_bpmn = VersaoFluxoBPMNSerializer(many=True, read_only=True)
+    feedbacks_ia = FeedbackFluxoIASerializer(many=True, read_only=True)
+    revisoes_governanca = RevisaoGovernancaSerializer(many=True, read_only=True)
+    exclusao = ExclusaoProcessoSerializer(read_only=True, allow_null=True, default=None)
+
+    class Meta:
+        model = Processo
+        fields = [
+            'id',
+            'codigo',
+            'nome',
+            'secretaria',
+            'setor',
+            'objetivo',
+            'descricao',
+            'legislacao',
+            'etapa_atual',
+            'status',
+            'versao_atual',
+            'criado_por',
+            'criado_por_nome',
+            'aprovado_por',
+            'aprovado_por_nome',
+            'submetido_em',
+            'aprovado_em',
+            'criado_em',
+            'atualizado_em',
+            'bpmn_xml_atual',
+            'entrevista',
+            'versoes_bpmn',
+            'feedbacks_ia',
+            'revisoes_governanca',
+            'exclusao',
+        ]
+        read_only_fields = [
+            'id',
+            'codigo',
+            'criado_por',
+            'criado_por_nome',
+            'aprovado_por',
+            'aprovado_por_nome',
+            'submetido_em',
+            'aprovado_em',
+            'criado_em',
+            'atualizado_em',
+            'bpmn_xml_atual',
+            'versoes_bpmn',
+            'feedbacks_ia',
+            'revisoes_governanca',
+            'exclusao',
+        ]
+
+    def get_bpmn_xml_atual(self, obj: Processo) -> str | None:
+        versoes = list(obj.versoes_bpmn.all())
+        if not versoes:
+            return None
+        return versoes[-1].bpmn_xml
+
+
+class PerguntaEntrevistaSerializer(serializers.ModelSerializer):
+    """DTO para listagem das perguntas da entrevista guiada."""
+
+    class Meta:
+        model = PerguntaEntrevista
+        fields = [
+            'id',
+            'chave',
+            'ordem',
+            'titulo',
+            'enunciado',
+            'obrigatoria',
+            'ativa',
+        ]
+        read_only_fields = ['id', 'chave', 'ordem', 'titulo', 'enunciado', 'obrigatoria', 'ativa']
+
+

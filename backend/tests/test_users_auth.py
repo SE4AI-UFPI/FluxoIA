@@ -11,10 +11,10 @@ class TestUsersAndAuth:
     def test_register_and_login_flow(self):
         # 1. Auto-cadastro (Sign Up)
         payload = {
-            'email': 'servidor@sdu.pi.gov.br',
-            'nome': 'Carlos Servidor',
+            'email': 'operacional@sdu.pi.gov.br',
+            'nome': 'Carlos Operacional',
             'password': 'SenhaForte@123',
-            'papel': PapelUsuario.SERVIDOR,
+            'papel': PapelUsuario.OPERACIONAL,
             'secretaria': 'SDU Leste',
             'setor': 'SDU: Protocolo',
             'cargo': 'Atendente de Protocolo',
@@ -24,17 +24,17 @@ class TestUsersAndAuth:
         assert res.status_code == 201
         assert 'access' in res.data
         assert 'refresh' in res.data
-        assert res.data['user']['email'] == 'servidor@sdu.pi.gov.br'
-        assert res.data['user']['papel'] == 'servidor'
+        assert res.data['user']['email'] == 'operacional@sdu.pi.gov.br'
+        assert res.data['user']['papel'] == 'operacional'
 
         # 2. Login via /api/auth/login/
         login_res = self.client.post(
             '/api/auth/login/',
-            {'email': 'servidor@sdu.pi.gov.br', 'password': 'SenhaForte@123'},
+            {'email': 'operacional@sdu.pi.gov.br', 'password': 'SenhaForte@123'},
             format='json',
         )
         assert login_res.status_code == 200
-        assert login_res.data['user']['nome'] == 'Carlos Servidor'
+        assert login_res.data['user']['nome'] == 'Carlos Operacional'
         token = login_res.data['access']
 
         # 3. Consulta e atualização de perfil em /api/auth/me/
@@ -51,7 +51,7 @@ class TestUsersAndAuth:
         )
         assert patch_res.status_code == 200
         assert patch_res.data['cargo'] == 'Analista Técnico'
-        assert patch_res.data['papel'] == 'servidor'
+        assert patch_res.data['papel'] == 'operacional'
 
     def test_admin_crud_usuarios(self):
         admin = User.objects.create_superuser(
@@ -66,14 +66,14 @@ class TestUsersAndAuth:
         )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_res.data['access']}")
 
-        # Create (Admin cadastra Chefe do Setor / Validador)
+        # Create (Admin cadastra Coordenador)
         create_res = self.client.post(
             '/api/usuarios/',
             {
-                'email': 'chefe.ceu@sdu.pi.gov.br',
+                'email': 'coord.ceu@sdu.pi.gov.br',
                 'nome': 'Coordenação CEU',
-                'password': 'Validador@123',
-                'papel': PapelUsuario.VALIDADOR,
+                'password': 'Coordenador@123',
+                'papel': PapelUsuario.COORDENADOR,
                 'secretaria': 'SDU Leste',
                 'setor': 'SDU: CEU',
                 'cargo': 'Coordenadora',
@@ -82,13 +82,13 @@ class TestUsersAndAuth:
         )
         assert create_res.status_code == 201
         user_id = create_res.data['id']
-        assert create_res.data['papel'] == 'validador'
+        assert create_res.data['papel'] == 'coordenador'
 
         # List + Filtro por papel
-        list_res = self.client.get('/api/usuarios/?papel=validador')
+        list_res = self.client.get('/api/usuarios/?papel=coordenador')
         assert list_res.status_code == 200
         assert len(list_res.data) == 1
-        assert list_res.data[0]['email'] == 'chefe.ceu@sdu.pi.gov.br'
+        assert list_res.data[0]['email'] == 'coord.ceu@sdu.pi.gov.br'
 
         # Update
         upd_res = self.client.patch(
@@ -155,15 +155,17 @@ class TestUsersAndAuth:
     def test_non_admin_cannot_create_or_delete_other_users(self):
         u1 = User.objects.create_user(
             email='u1@sdu.pi.gov.br',
-            nome='Servidor 1',
+            nome='Operacional 1',
             password='Password@123',
-            papel=PapelUsuario.SERVIDOR,
+            papel=PapelUsuario.OPERACIONAL,
+            setor='Protocolo',
         )
         u2 = User.objects.create_user(
             email='u2@sdu.pi.gov.br',
-            nome='Servidor 2',
+            nome='Operacional 2',
             password='Password@123',
-            papel=PapelUsuario.SERVIDOR,
+            papel=PapelUsuario.OPERACIONAL,
+            setor='Protocolo',
         )
         login_res = self.client.post(
             '/api/auth/login/',
@@ -176,7 +178,7 @@ class TestUsersAndAuth:
         assert list_res.status_code == 200
         assert [user['id'] for user in list_res.data] == [str(u1.id)]
 
-        # Servidor comum não pode criar usuários via /api/usuarios/
+        # Usuário comum não pode criar usuários via /api/usuarios/
         res_create = self.client.post(
             '/api/usuarios/',
             {
@@ -188,7 +190,7 @@ class TestUsersAndAuth:
         )
         assert res_create.status_code == 403
 
-        # Servidor comum não pode editar nem deletar outro usuário
+        # Usuário comum não pode editar nem deletar outro usuário
         res_patch = self.client.patch(f'/api/usuarios/{u2.id}/', {'nome': 'Hack'}, format='json')
         assert res_patch.status_code == 404
 
@@ -198,7 +200,7 @@ class TestUsersAndAuth:
             format='json',
         )
         assert self_patch.status_code == 200
-        assert self_patch.data['setor'] == ''
+        assert self_patch.data['setor'] == 'Protocolo'
         assert self_patch.data['permissoes'] == []
 
         res_del = self.client.delete(f'/api/usuarios/{u1.id}/')

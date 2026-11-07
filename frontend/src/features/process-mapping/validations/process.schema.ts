@@ -22,5 +22,12 @@ export function getInterviewErrors(
 }
 
 export function validateFeedback(feedback: ProcessFeedback): boolean {
-  return feedback.representsProcess !== null
+  return (
+    feedback.representsProcess !== null &&
+    feedback.accuracyScore >= 1 &&
+    feedback.accuracyScore <= 5 &&
+    feedback.interviewClarityScore >= 1 &&
+    feedback.interviewClarityScore <= 5 &&
+    Boolean(feedback.editLevel)
+  )
 }

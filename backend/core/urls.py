@@ -6,12 +6,16 @@ from .views import (
     ChangePasswordView,
     CustomTokenObtainPairView,
     MeView,
+    PerguntaEntrevistaViewSet,
+    ProcessoViewSet,
     RegisterView,
     UserViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'usuarios', UserViewSet, basename='usuario')
+router.register(r'processos', ProcessoViewSet, basename='processo')
+router.register(r'perguntas-entrevista', PerguntaEntrevistaViewSet, basename='pergunta-entrevista')
 
 urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='auth-login'),

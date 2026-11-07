@@ -1,10 +1,15 @@
 export type PapelUsuario =
-  | 'servidor'
-  | 'validador'
   | 'admin'
   | 'supervisor'
   | 'coordenador'
   | 'operacional'
+
+export const PAPEL_LABEL: Record<PapelUsuario, string> = {
+  admin: 'Administrador',
+  supervisor: 'Supervisor de Setor',
+  coordenador: 'Coordenador',
+  operacional: 'Usuário Operacional',
+}
 
 export interface Usuario {
   id: string

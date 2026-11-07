@@ -1,12 +1,25 @@
 import * as React from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import type { Usuario } from '@/types/auth'
-import { generateProcessBpmn } from '../services/bpmn.service'
 import {
   createInitialProcess,
+  fetchProcessoByIdFromApi,
+  generateBpmnWithAiFromApi,
+  hasRequiredProcessInfo,
   loadProcessDraft,
+  mapApiProcessoToWizardState,
+  reuseLocalDraftId,
+  saveBpmnVersionToApi,
+  saveBpmnLayoutToApi,
   saveProcessDraft,
   submitProcessForValidation,
+  submitProcessToApi,
+  syncProcessWithApi,
 } from '../services/process.service'
+import {
+  canEditBpmnLayout,
+  MOTIVO_BLOQUEIO_EDICAO,
+} from '../services/bpmn-layout.service'
 import type {
   InterviewAnswerKey,
   ProcessFeedback,
@@ -16,25 +29,110 @@ import type {
 } from '../types/process.types'
 import { useVersionControl } from './useVersionControl'
 
+const DEFAULT_INSTITUTIONAL_SECTORS = [
+  'SDU: Protocolo',
+  'SDU: Licenciamento',
+  'SDU: CEU - DAP',
+  'SECTI: Governança Digital',
+  'SEAD: Gestão de Processos',
+]
+
 export function useProcessWizard(user: Usuario) {
-  const allowedSectors = React.useMemo(
-    () => [...new Set([user.setor, ...user.setores_vinculados].filter(Boolean))],
-    [user.setor, user.setores_vinculados],
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const processoQueryId = searchParams.get('processo')
+  // ?novo=1 (dashboard) e a rota /processos/novo (menu) sempre iniciam um novo mapeamento,
+  // sem retomar o rascunho de outro processo em andamento.
+  const startFresh = searchParams.get('novo') === '1' || (
+    location.pathname === '/processos/novo' && !processoQueryId
   )
+
+  const allowedSectors = React.useMemo(() => {
+    const userSectors = [...new Set([user.setor, ...(user.setores_vinculados ?? [])].filter(Boolean))]
+    if (user.papel === 'admin' || userSectors.length < 2) {
+      return [...new Set([...userSectors, ...DEFAULT_INSTITUTIONAL_SECTORS])]
+    }
+    return userSectors
+  }, [user.papel, user.setor, user.setores_vinculados])
+
+  const defaultSector = allowedSectors[0] ?? DEFAULT_INSTITUTIONAL_SECTORS[0]
+
   const [process, setProcess] = React.useState<ProcessWizardState>(() =>
-    loadProcessDraft(user.id, allowedSectors[0] ?? ''),
+    startFresh ? createInitialProcess(user.id, defaultSector) : loadProcessDraft(user.id, defaultSector),
   )
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null)
+  const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
+  const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
+  const [isSavingLayout, setIsSavingLayout] = React.useState(false)
+  const [layoutError, setLayoutError] = React.useState<string | null>(null)
+  const [submissionError, setSubmissionError] = React.useState<string | null>(null)
   const versionControl = useVersionControl()
 
   React.useEffect(() => {
-    if (process.status === 'Aguardando Validação do Gestor') return
+    if (searchParams.get('novo') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('novo')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  React.useEffect(() => {
+    if (!process.info.sector && defaultSector) {
+      setProcess((current) => ({
+        ...current,
+        info: { ...current.info, sector: defaultSector },
+      }))
+    }
+  }, [defaultSector, process.info.sector])
+
+  React.useEffect(() => {
+    if (!processoQueryId || !user.id) return
+    let active = true
+
+    fetchProcessoByIdFromApi(processoQueryId)
+      .then((apiProcesso) => {
+        if (!active) return
+        const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+        const localDraftId = reuseLocalDraftId(user.id, defaultSector, apiProcesso.id)
+        if (localDraftId) mapped.id = localDraftId
+        setProcess(mapped)
+        saveProcessDraft(mapped)
+        setLastSavedAt(mapped.updatedAt)
+      })
+      .catch(() => {
+        // Fallback silencioso para o rascunho da sessão
+      })
+
+    return () => {
+      active = false
+    }
+  }, [processoQueryId, user.id, defaultSector])
+
+  React.useEffect(() => {
+    if (!user.id || process.status === 'Aguardando Validação do Gestor') return
     const timeout = window.setTimeout(() => {
       const saved = saveProcessDraft(process)
       setLastSavedAt(saved.updatedAt)
     }, 250)
     return () => window.clearTimeout(timeout)
-  }, [process])
+  }, [process, user.id])
+
+  async function persistToBackend(snapshot: ProcessWizardState): Promise<string | null> {
+    if (!hasRequiredProcessInfo(snapshot.info)) return snapshot.backendId ?? null
+    try {
+      const synced = await syncProcessWithApi(snapshot, user.secretaria)
+      if (synced?.id) {
+        setProcess((current) => ({
+          ...current,
+          backendId: synced.id,
+          code: synced.codigo ?? current.code,
+        }))
+        return synced.id
+      }
+    } catch {
+      // Mantém funcionamento via sessionStorage se a API não estiver acessível
+    }
+    return snapshot.backendId ?? null
+  }
 
   function updateInfo<Key extends keyof ProcessInfo>(key: Key, value: ProcessInfo[Key]) {
     setProcess((current) => ({
@@ -61,30 +159,86 @@ export function useProcessWizard(user: Usuario) {
   }
 
   function setStep(step: ProcessStep, status: ProcessWizardState['status']) {
-    setProcess((current) => ({ ...current, step, status }))
+    const nextState: ProcessWizardState = { ...process, step, status }
+    setProcess(nextState)
+    void persistToBackend(nextState)
   }
 
   function saveDraft() {
     const saved = saveProcessDraft(process)
     setLastSavedAt(saved.updatedAt)
+    void persistToBackend(saved)
   }
 
-  function generateBpmn() {
-    const version = process.bpmnXml
-      ? versionControl.nextCorrectionVersion(process.version)
-      : versionControl.initialVersion
-    const reason = process.bpmnXml ? 'Nova versão gerada após solicitação de ajustes' : 'Geração inicial do fluxo BPMN'
-    const bpmnXml = generateProcessBpmn(process.info, process.answers)
-    const historyEntry = versionControl.createHistoryEntry({ user: user.nome, version, reason })
-    setProcess((current) => ({
-      ...current,
-      bpmnXml,
-      version,
-      step: 3,
-      status: 'Em Modelagem BPMN',
-      updatedAt: new Date().toISOString(),
-      history: [...current.history, historyEntry],
-    }))
+  async function generateBpmn() {
+    setIsGeneratingBpmn(true)
+    setAiGenerationError(null)
+
+    try {
+      const backendId = (await persistToBackend(process)) ?? process.backendId
+      if (!backendId) {
+        throw new Error('Não foi possível sincronizar o processo com o servidor para iniciar a geração por IA.')
+      }
+
+      const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
+      const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+      const nextState: ProcessWizardState = {
+        ...mapped,
+        step: 3,
+        status: 'Em Modelagem BPMN',
+      }
+      setProcess(nextState)
+      saveProcessDraft(nextState)
+      setLastSavedAt(nextState.updatedAt)
+    } catch (error) {
+      setAiGenerationError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível gerar o diagrama BPMN com a IA. Verifique a configuração do provedor no backend.',
+      )
+    } finally {
+      setIsGeneratingBpmn(false)
+    }
+  }
+
+  async function saveBpmnLayout(xml: string) {
+    if (!canEditBpmnLayout(process.status)) {
+      setLayoutError(MOTIVO_BLOQUEIO_EDICAO)
+      throw new Error(MOTIVO_BLOQUEIO_EDICAO)
+    }
+
+    setIsSavingLayout(true)
+    setLayoutError(null)
+    try {
+      const backendId = process.backendId ?? (await persistToBackend(process))
+      if (backendId) {
+        await saveBpmnLayoutToApi(backendId, xml)
+      }
+
+      const historyEntry = versionControl.createHistoryEntry({
+        user: user.nome,
+        version: process.version,
+        reason: 'Ajuste visual de layout (sem alteração funcional)',
+      })
+      const nextState: ProcessWizardState = {
+        ...process,
+        backendId: backendId ?? process.backendId,
+        bpmnXml: xml,
+        history: [...process.history, historyEntry],
+      }
+      const saved = saveProcessDraft(nextState)
+      setProcess(saved)
+      setLastSavedAt(saved.updatedAt)
+    } catch (error) {
+      const mensagem =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar os ajustes de layout do diagrama.'
+      setLayoutError(mensagem)
+      throw new Error(mensagem)
+    } finally {
+      setIsSavingLayout(false)
+    }
   }
 
   function requestRegeneration() {
@@ -94,13 +248,15 @@ export function useProcessWizard(user: Usuario) {
       version: process.version,
       reason: `Solicitada regeneração: ${reason}`,
     })
-    setProcess((current) => ({
-      ...current,
+    const nextState: ProcessWizardState = {
+      ...process,
       step: 2,
       questionIndex: 0,
       status: 'Em Entrevista',
-      history: [...current.history, historyEntry],
-    }))
+      history: [...process.history, historyEntry],
+    }
+    setProcess(nextState)
+    void persistToBackend(nextState)
   }
 
   function submitForValidation() {
@@ -115,10 +271,58 @@ export function useProcessWizard(user: Usuario) {
       user.nome,
     )
     setProcess({ ...submitted, sentAt: submittedAt })
+
+    void (async () => {
+      try {
+        const backendId =
+          process.backendId ?? (await persistToBackend({ ...process, status: 'Em Avaliação', step: 4 }))
+        if (!backendId) {
+          throw new Error('Não foi possível sincronizar o processo com o servidor para envio.')
+        }
+
+        // Após correção solicitada o processo está em "Ajustes Solicitados":
+        // é necessário retorná-lo para "Em Avaliação" antes de submeter.
+        if (process.status !== 'Em Avaliação') {
+          await syncProcessWithApi(
+            { ...process, status: 'Em Avaliação', step: 4 },
+            user.secretaria,
+          )
+        }
+
+        if (process.bpmnXml && process.history.length === 0) {
+          await saveBpmnVersionToApi(backendId, {
+            numero_versao: process.version,
+            bpmn_xml: process.bpmnXml,
+            origem: 'ia',
+            motivo_alteracao: 'Versão consolidada para submissão',
+          }).catch(() => null)
+        }
+        const apiSubmitted = await submitProcessToApi(backendId, process.feedback)
+        setSubmissionError(null)
+        setProcess((current) => ({
+          ...current,
+          backendId: apiSubmitted.id,
+          code: apiSubmitted.codigo ?? current.code,
+          sentAt: apiSubmitted.submetido_em ?? current.sentAt,
+        }))
+      } catch (error) {
+        setSubmissionError(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível enviar o processo para validação.',
+        )
+        // Reverte o estado otimista: o processo continua em avaliação no servidor.
+        setProcess((current) => ({ ...current, status: 'Em Avaliação', step: 4 }))
+      }
+    })()
   }
 
   function startNewProcess() {
-    const fresh = createInitialProcess(user.id, allowedSectors[0] ?? '')
+    if (processoQueryId) {
+      setSearchParams({})
+    }
+    setAiGenerationError(null)
+    const fresh = createInitialProcess(user.id, defaultSector)
     setProcess(fresh)
     saveProcessDraft(fresh)
   }
@@ -127,6 +331,11 @@ export function useProcessWizard(user: Usuario) {
     process,
     allowedSectors,
     lastSavedAt,
+    isGeneratingBpmn,
+    aiGenerationError,
+    isSavingLayout,
+    layoutError,
+    submissionError,
     updateInfo,
     updateAnswer,
     updateQuestionIndex,
@@ -134,6 +343,7 @@ export function useProcessWizard(user: Usuario) {
     setStep,
     saveDraft,
     generateBpmn,
+    saveBpmnLayout,
     requestRegeneration,
     submitForValidation,
     startNewProcess,
