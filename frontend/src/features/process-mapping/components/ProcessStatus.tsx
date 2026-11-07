@@ -7,8 +7,10 @@ const STATUS_VARIANT: Record<ProcessStatusValue, 'default' | 'secondary' | 'succ
   'Em Modelagem BPMN': 'default',
   'Em Avaliação': 'warning',
   'Aguardando Validação do Gestor': 'warning',
+  'Ajustes Solicitados': 'warning',
   Aprovado: 'success',
   Publicado: 'success',
+  Excluído: 'warning',
 }
 
 export function ProcessStatus({ status }: { status: ProcessStatusValue }) {

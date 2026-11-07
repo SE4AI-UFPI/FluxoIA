@@ -1,3 +1,4 @@
+import os
 import uuid
 from django.core.management.base import BaseCommand
 from core.models import (
@@ -58,11 +59,38 @@ class Command(BaseCommand):
         ]
 
         for dados in usuarios:
-            user, _ = User.objects.update_or_create(email=dados["email"], defaults=dados)
-            user.set_password("FluxoIA@2026")
-            user.save()
+            user, criado = User.objects.get_or_create(
+                email=dados["email"],
+                defaults=dados,
+            )
+            if not criado:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[SKIP] {dados['email']} já existe — perfil, dados e senha preservados."
+                    )
+                )
+                continue
 
-        self.stdout.write(self.style.SUCCESS(f"[OK] {len(usuarios)} Usuarios RBAC configurados (senha: FluxoIA@2026)."))
+            senha_seed = os.getenv("SEED_USER_PASSWORD", "").strip()
+            if senha_seed:
+                user.set_password(senha_seed)
+                user.save(update_fields=["password"])
+                self.stdout.write(self.style.SUCCESS(f"[OK] {dados['email']} criado com senha de SEED_USER_PASSWORD."))
+            else:
+                user.set_unusable_password()
+                user.save(update_fields=["password"])
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[OK] {dados['email']} criado sem senha utilizável. "
+                        f"Defina-a com: python manage.py changepassword {dados['email']}"
+                    )
+                )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"[OK] {len(usuarios)} usuários RBAC verificados (criação idempotente, sem sobrescrita)."
+            )
+        )
 
         # 2. Perguntas da Entrevista Guiada
         perguntas = [

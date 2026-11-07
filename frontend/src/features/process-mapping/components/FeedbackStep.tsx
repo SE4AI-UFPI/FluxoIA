@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Check, RotateCcw } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, ChevronDown, ClipboardCheck, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,7 @@ import type {
   ProcessFeedback,
   ProcessWizardState,
 } from '../types/process.types'
-import { BPMNViewer } from './BPMNViewer'
+import { BPMNEditor } from './BPMNEditor'
 import { ProcessFichaTecnicaCards } from './ProcessFichaTecnicaCards'
 import { ProcessStatus } from './ProcessStatus'
 import { VersionHistory } from './VersionHistory'
@@ -222,6 +222,10 @@ export function FeedbackStep({
   onRegenerate,
   onConfirm,
   onNewProcess,
+  onSaveLayout,
+  isSavingLayout = false,
+  layoutError = null,
+  submissionError = null,
 }: {
   process: ProcessWizardState
   feedback: ProcessFeedback
@@ -230,8 +234,12 @@ export function FeedbackStep({
   onRegenerate: () => void
   onConfirm: () => void
   onNewProcess: () => void
+  onSaveLayout: (xml: string) => Promise<void> | void
+  isSavingLayout?: boolean
+  layoutError?: string | null
+  submissionError?: string | null
 }) {
-  const [feedbackOpen, setFeedbackOpen] = useState(true)
+  const [fichaAberta, setFichaAberta] = useState(false)
   const submitted = process.status === 'Aguardando Validação do Gestor'
 
   if (submitted) {
@@ -260,32 +268,129 @@ export function FeedbackStep({
 
   return (
     <div className="space-y-5">
+      {/* Ficha técnica do processo — topo, recolhível */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-xl">Ficha Técnica do Processo</CardTitle>
+              <CardDescription>
+                Informações complementares consolidadas a partir da entrevista guiada.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">v{process.version}</Badge>
+              <ProcessStatus status={process.status} />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 border-t border-fx-linha/70 pt-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-[11px] text-fx-cinza">Nome do Processo</p>
+              <p className="mt-1 text-sm font-semibold text-fx-marinho">{process.info.name}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-fx-cinza">Setor / Unidade</p>
+              <p className="mt-1 text-sm font-semibold text-fx-marinho">{process.info.sector}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-fx-cinza">Última Atualização</p>
+              <p className="mt-1 text-sm font-semibold text-fx-marinho">
+                {new Date(process.updatedAt).toLocaleString('pt-BR')}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-fx-cinza">Versão Atual</p>
+              <p className="mt-1 text-sm font-semibold text-fx-marinho">v{process.version}</p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full justify-between sm:w-auto"
+            aria-expanded={fichaAberta}
+            onClick={() => setFichaAberta((current) => !current)}
+          >
+            <span className="flex items-center gap-1.5">
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${fichaAberta ? 'rotate-180' : ''}`}
+              />
+              {fichaAberta
+                ? 'Ocultar quadros complementares'
+                : 'Ver quadros complementares (legenda, documentos, sistemas, taxas)'}
+            </span>
+          </Button>
+          {fichaAberta && <ProcessFichaTecnicaCards process={process} />}
+        </CardContent>
+      </Card>
+
+      {layoutError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-sm border border-fx-alerta/40 bg-fx-alerta/10 px-4 py-3 text-sm text-fx-alerta"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold">Não foi possível salvar o layout</p>
+            <p className="text-xs leading-relaxed">{layoutError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Área BPMN em largura total */}
+      {process.bpmnXml && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4 text-fx-azul" />
+              <CardTitle className="text-base">Diagrama BPMN 2.0 · {process.info.name}</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <BPMNEditor
+              xml={process.bpmnXml}
+              filename={process.code ?? 'processo-bpmn'}
+              status={process.status}
+              isSaving={isSavingLayout}
+              onSaveLayout={onSaveLayout}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Avaliação da geração da IA — abaixo da ficha técnica e do diagrama */}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1.5">
               <CardTitle className="text-xl">Avaliação Quantitativa e Feedback</CardTitle>
-              <CardDescription>Avalie a qualidade do fluxo gerado pela IA e confirme se ele representa o processo da sua unidade.</CardDescription>
+              <CardDescription>
+                Avalie a qualidade do fluxo gerado pela IA e confirme se ele representa o processo
+                da sua unidade.
+              </CardDescription>
             </div>
             <Badge variant="secondary">v{process.version}</Badge>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-5 border-t border-fx-linha/70 pt-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
-          <div className="min-w-0 space-y-3">
-            <h3 className="text-sm font-semibold text-fx-marinho">Fluxo BPMN · {process.info.name}</h3>
-            {process.bpmnXml && <BPMNViewer xml={process.bpmnXml} filename={process.code ?? 'processo-bpmn'} />}
-            <ProcessFichaTecnicaCards process={process} />
-          </div>
-          <details open={feedbackOpen} onToggle={(event) => setFeedbackOpen(event.currentTarget.open)} className="min-w-0 rounded-sm border border-fx-linha bg-fx-papel p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-fx-marinho focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul">
-              Avaliação da geração por IA
-            </summary>
-            <div className="pt-4">
-              <FeedbackFields feedback={feedback} onChange={onFeedbackChange} />
-            </div>
-          </details>
+        <CardContent className="border-t border-fx-linha/70 pt-4">
+          <FeedbackFields feedback={feedback} onChange={onFeedbackChange} />
         </CardContent>
       </Card>
+
+      {submissionError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-sm border border-fx-alerta/40 bg-fx-alerta/10 px-4 py-3 text-sm text-fx-alerta"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold">Não foi possível enviar para validação</p>
+            <p className="text-xs leading-relaxed">{submissionError}</p>
+          </div>
+        </div>
+      )}
 
       <VersionHistory entries={process.history} />
       <div className="flex flex-col-reverse gap-2 border-t border-fx-linha/70 pt-4 sm:flex-row sm:items-center sm:justify-between">

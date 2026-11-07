@@ -247,7 +247,7 @@ export function OperationalDashboard({
             <Button
               size="lg"
               className="w-full shrink-0 sm:w-auto"
-              onClick={() => navigate('/mapear-processo')}
+              onClick={() => navigate('/mapear-processo?novo=1')}
             >
               <FilePlus2 className="h-4 w-4" />
               Iniciar Novo Processo

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import type { Usuario } from '@/types/auth'
 import {
   createInitialProcess,
@@ -8,12 +8,20 @@ import {
   hasRequiredProcessInfo,
   loadProcessDraft,
   mapApiProcessoToWizardState,
+  reuseLocalDraftId,
   saveBpmnVersionToApi,
+  saveBpmnLayoutToApi,
   saveProcessDraft,
   submitProcessForValidation,
   submitProcessToApi,
   syncProcessWithApi,
 } from '../services/process.service'
+import {
+  canEditBpmnLayout,
+  diagramaPrecisaLayout,
+  gerarLayoutAutomatico,
+  MOTIVO_BLOQUEIO_EDICAO,
+} from '../services/bpmn-layout.service'
 import type {
   InterviewAnswerKey,
   ProcessFeedback,
@@ -33,7 +41,13 @@ const DEFAULT_INSTITUTIONAL_SECTORS = [
 
 export function useProcessWizard(user: Usuario) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
   const processoQueryId = searchParams.get('processo')
+  // ?novo=1 (dashboard) e a rota /processos/novo (menu) sempre iniciam um novo mapeamento,
+  // sem retomar o rascunho de outro processo em andamento.
+  const startFresh = searchParams.get('novo') === '1' || (
+    location.pathname === '/processos/novo' && !processoQueryId
+  )
 
   const allowedSectors = React.useMemo(() => {
     const userSectors = [...new Set([user.setor, ...(user.setores_vinculados ?? [])].filter(Boolean))]
@@ -46,12 +60,22 @@ export function useProcessWizard(user: Usuario) {
   const defaultSector = allowedSectors[0] ?? DEFAULT_INSTITUTIONAL_SECTORS[0]
 
   const [process, setProcess] = React.useState<ProcessWizardState>(() =>
-    loadProcessDraft(user.id, defaultSector),
+    startFresh ? createInitialProcess(user.id, defaultSector) : loadProcessDraft(user.id, defaultSector),
   )
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null)
   const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
   const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
+  const [isSavingLayout, setIsSavingLayout] = React.useState(false)
+  const [layoutError, setLayoutError] = React.useState<string | null>(null)
+  const [submissionError, setSubmissionError] = React.useState<string | null>(null)
   const versionControl = useVersionControl()
+
+  React.useEffect(() => {
+    if (searchParams.get('novo') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('novo')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   React.useEffect(() => {
     if (!process.info.sector && defaultSector) {
@@ -70,9 +94,22 @@ export function useProcessWizard(user: Usuario) {
       .then((apiProcesso) => {
         if (!active) return
         const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+        const localDraftId = reuseLocalDraftId(user.id, defaultSector, apiProcesso.id)
+        if (localDraftId) mapped.id = localDraftId
         setProcess(mapped)
         saveProcessDraft(mapped)
         setLastSavedAt(mapped.updatedAt)
+
+        // Diagramas gerados por versões anteriores podem ter conectores cruzando
+        // formas: reorganiza ao abrir, em modo best-effort.
+        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
+          .then((normalizado) => {
+            if (!active || normalizado === mapped) return
+            setProcess(normalizado)
+            saveProcessDraft(normalizado)
+            setLastSavedAt(normalizado.updatedAt)
+          })
+          .catch(() => undefined)
       })
       .catch(() => {
         // Fallback silencioso para o rascunho da sessão
@@ -146,6 +183,41 @@ export function useProcessWizard(user: Usuario) {
     void persistToBackend(saved)
   }
 
+  /**
+   * Aplica o auto layout ao diagrama gerado e persiste o resultado.
+   *
+   * Nenhuma falha aqui pode interromper a geração: se o layout ou o salvamento
+   * falharem, o estado recebido é devolvido (com o XML organizado quando possível).
+   */
+  async function aplicarLayoutAutomatico(
+    estado: ProcessWizardState,
+    backendId: string,
+    opcoes: { somenteSeNecessario?: boolean } = {},
+  ): Promise<ProcessWizardState> {
+    if (!estado.bpmnXml) return estado
+    if (!canEditBpmnLayout(estado.status)) return estado
+
+    // Evita reescrever diagramas que já estão corretos (idempotência).
+    if (opcoes.somenteSeNecessario && !diagramaPrecisaLayout(estado.bpmnXml)) return estado
+
+    let organizado: string
+    try {
+      organizado = await gerarLayoutAutomatico(estado.bpmnXml)
+    } catch {
+      return estado
+    }
+    if (!organizado || organizado === estado.bpmnXml) return estado
+
+    try {
+      const atualizado = await saveBpmnLayoutToApi(backendId, organizado)
+      const remapeado = mapApiProcessoToWizardState(atualizado, user.id, defaultSector)
+      return { ...remapeado, bpmnXml: organizado }
+    } catch {
+      // Persistência best-effort: o diagrama organizado segue no rascunho local.
+      return { ...estado, bpmnXml: organizado }
+    }
+  }
+
   async function generateBpmn() {
     setIsGeneratingBpmn(true)
     setAiGenerationError(null)
@@ -158,8 +230,13 @@ export function useProcessWizard(user: Usuario) {
 
       const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
       const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+
+      // Etapa de Auto Layout: reorganiza apenas o DI do diagrama recém-gerado.
+      // Roda em modo best-effort — se falhar, o XML original da IA é mantido.
+      const estadoComLayout = await aplicarLayoutAutomatico(mapped, backendId)
+
       const nextState: ProcessWizardState = {
-        ...mapped,
+        ...estadoComLayout,
         step: 3,
         status: 'Em Modelagem BPMN',
       }
@@ -174,6 +251,46 @@ export function useProcessWizard(user: Usuario) {
       )
     } finally {
       setIsGeneratingBpmn(false)
+    }
+  }
+
+  async function saveBpmnLayout(xml: string) {
+    if (!canEditBpmnLayout(process.status)) {
+      setLayoutError(MOTIVO_BLOQUEIO_EDICAO)
+      throw new Error(MOTIVO_BLOQUEIO_EDICAO)
+    }
+
+    setIsSavingLayout(true)
+    setLayoutError(null)
+    try {
+      const backendId = process.backendId ?? (await persistToBackend(process))
+      if (backendId) {
+        await saveBpmnLayoutToApi(backendId, xml)
+      }
+
+      const historyEntry = versionControl.createHistoryEntry({
+        user: user.nome,
+        version: process.version,
+        reason: 'Ajuste visual de layout (sem alteração funcional)',
+      })
+      const nextState: ProcessWizardState = {
+        ...process,
+        backendId: backendId ?? process.backendId,
+        bpmnXml: xml,
+        history: [...process.history, historyEntry],
+      }
+      const saved = saveProcessDraft(nextState)
+      setProcess(saved)
+      setLastSavedAt(saved.updatedAt)
+    } catch (error) {
+      const mensagem =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar os ajustes de layout do diagrama.'
+      setLayoutError(mensagem)
+      throw new Error(mensagem)
+    } finally {
+      setIsSavingLayout(false)
     }
   }
 
@@ -210,8 +327,21 @@ export function useProcessWizard(user: Usuario) {
 
     void (async () => {
       try {
-        const backendId = (await persistToBackend(process)) ?? process.backendId
-        if (!backendId) return
+        const backendId =
+          process.backendId ?? (await persistToBackend({ ...process, status: 'Em Avaliação', step: 4 }))
+        if (!backendId) {
+          throw new Error('Não foi possível sincronizar o processo com o servidor para envio.')
+        }
+
+        // Após correção solicitada o processo está em "Ajustes Solicitados":
+        // é necessário retorná-lo para "Em Avaliação" antes de submeter.
+        if (process.status !== 'Em Avaliação') {
+          await syncProcessWithApi(
+            { ...process, status: 'Em Avaliação', step: 4 },
+            user.secretaria,
+          )
+        }
+
         if (process.bpmnXml && process.history.length === 0) {
           await saveBpmnVersionToApi(backendId, {
             numero_versao: process.version,
@@ -221,14 +351,21 @@ export function useProcessWizard(user: Usuario) {
           }).catch(() => null)
         }
         const apiSubmitted = await submitProcessToApi(backendId, process.feedback)
+        setSubmissionError(null)
         setProcess((current) => ({
           ...current,
           backendId: apiSubmitted.id,
           code: apiSubmitted.codigo ?? current.code,
           sentAt: apiSubmitted.submetido_em ?? current.sentAt,
         }))
-      } catch {
-        // Mantém submissão local na sessão se a API falhar
+      } catch (error) {
+        setSubmissionError(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível enviar o processo para validação.',
+        )
+        // Reverte o estado otimista: o processo continua em avaliação no servidor.
+        setProcess((current) => ({ ...current, status: 'Em Avaliação', step: 4 }))
       }
     })()
   }
@@ -249,6 +386,9 @@ export function useProcessWizard(user: Usuario) {
     lastSavedAt,
     isGeneratingBpmn,
     aiGenerationError,
+    isSavingLayout,
+    layoutError,
+    submissionError,
     updateInfo,
     updateAnswer,
     updateQuestionIndex,
@@ -256,6 +396,7 @@ export function useProcessWizard(user: Usuario) {
     setStep,
     saveDraft,
     generateBpmn,
+    saveBpmnLayout,
     requestRegeneration,
     submitForValidation,
     startNewProcess,

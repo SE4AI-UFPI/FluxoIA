@@ -2,15 +2,9 @@ import type { PapelUsuario } from '@/types/auth'
 import type { MenuPermission, NavigationUser } from './navigation.types'
 
 const PERMISSIONS_BY_ROLE: Record<PapelUsuario, MenuPermission[]> = {
-  admin: [
-    'dashboard:view',
-    'processes:create',
-    'processes:view',
-    'governance:validate',
-    'indicators:view',
-    'reports:view',
-    'users:manage',
-  ],
+  // O Administrador atua na gestão institucional: dashboard, usuários e relatórios.
+  // Mapeamento, BPMN, indicadores e governança pertencem aos demais perfis.
+  admin: ['dashboard:view', 'users:manage', 'reports:view'],
   supervisor: [
     'dashboard:view',
     'processes:view',

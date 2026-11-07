@@ -1,17 +1,23 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Check, Save } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, Save, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 import { BPMNGenerationStep } from '../components/BPMNGenerationStep'
+import { ProcessDeletionDialog } from '../components/ProcessDeletionDialog'
 import { FeedbackStep } from '../components/FeedbackStep'
 import { InterviewStep } from '../components/InterviewStep'
 import { ProcessInfoStep } from '../components/ProcessInfoStep'
 import { ProcessStatus } from '../components/ProcessStatus'
 import { ProcessWizard } from '../components/ProcessWizard'
 import { useProcessWizard } from '../hooks/useProcessWizard'
+import {
+  canDeleteProcess,
+  deleteProcessFromApi,
+  discardProcessDraft,
+} from '../services/process.service'
 import {
   fetchPerguntasEntrevista,
   FALLBACK_INTERVIEW_QUESTIONS,
@@ -44,6 +50,10 @@ export function ProcessMappingPage() {
   const [infoErrors, setInfoErrors] = React.useState<ReturnType<typeof validateProcessInfo>>({})
   const [pageError, setPageError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const [deleteReason, setDeleteReason] = React.useState('')
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = React.useState(false)
   const [questions, setQuestions] = React.useState<InterviewQuestion[]>(FALLBACK_INTERVIEW_QUESTIONS)
   const wizard = useProcessWizard(user ?? EMPTY_USER)
 
@@ -109,6 +119,29 @@ export function ProcessMappingPage() {
     setPageError(null)
   }
 
+  async function confirmDeleteProcess() {
+    if (!user) return
+    if (!canDeleteProcess(process.status)) {
+      setDeleteError('Este processo não pode ser excluído neste status.')
+      return
+    }
+
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      if (process.backendId) {
+        await deleteProcessFromApi(process.backendId, deleteReason)
+      }
+      discardProcessDraft(user.id, process.id)
+      setDeleteDialogOpen(false)
+      navigate('/', { replace: true })
+    } catch (deleteError) {
+      setDeleteError(deleteError instanceof Error ? deleteError.message : 'Não foi possível excluir o processo.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   function changeStep(step: ProcessStep, status: Parameters<typeof wizard.setStep>[1]) {
     wizard.setStep(step, status)
     setPageError(null)
@@ -143,6 +176,21 @@ export function ProcessMappingPage() {
           </div>
           <div className="flex items-center gap-2">
             <ProcessStatus status={process.status} />
+            {canDeleteProcess(process.status) && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setDeleteError(null)
+                  setDeleteDialogOpen(true)
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Excluir Processo</span>
+                <span className="sm:hidden">Excluir</span>
+              </Button>
+            )}
             {process.status !== 'Aguardando Validação do Gestor' && (
               <Button type="button" variant="outline" size="sm" onClick={saveDraft}>
                 <Save className="h-4 w-4" /> <span className="hidden sm:inline">Salvar Rascunho</span>
@@ -195,10 +243,13 @@ export function ProcessMappingPage() {
             lastSavedAt={wizard.lastSavedAt}
             isGenerating={wizard.isGeneratingBpmn}
             generationError={wizard.aiGenerationError}
+            isSavingLayout={wizard.isSavingLayout}
+            layoutError={wizard.layoutError}
             onGenerate={wizard.generateBpmn}
             onBack={() => changeStep(2, 'Em Entrevista')}
             onContinue={continueToFeedback}
             onSave={saveDraft}
+            onSaveLayout={wizard.saveBpmnLayout}
           />
         )}
         {process.step === 4 && (
@@ -217,6 +268,10 @@ export function ProcessMappingPage() {
               setPageError(null)
               setNotice(null)
             }}
+            onSaveLayout={wizard.saveBpmnLayout}
+            isSavingLayout={wizard.isSavingLayout}
+            layoutError={wizard.layoutError}
+            submissionError={wizard.submissionError}
           />
         )}
 
@@ -225,6 +280,18 @@ export function ProcessMappingPage() {
           <span>Rascunhos armazenados nesta sessão do navegador</span>
         </footer>
       </main>
+      <ProcessDeletionDialog
+        open={deleteDialogOpen}
+        reason={deleteReason}
+        error={deleteError}
+        isSubmitting={isDeleting}
+        onReasonChange={setDeleteReason}
+        onCancel={() => {
+          setDeleteDialogOpen(false)
+          setDeleteError(null)
+        }}
+        onConfirm={() => void confirmDeleteProcess()}
+      />
     </div>
   )
 }

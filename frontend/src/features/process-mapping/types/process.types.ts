@@ -6,8 +6,10 @@ export type ProcessStatus =
   | 'Em Modelagem BPMN'
   | 'Em Avaliação'
   | 'Aguardando Validação do Gestor'
+  | 'Ajustes Solicitados'
   | 'Aprovado'
   | 'Publicado'
+  | 'Excluído'
 
 export type InterviewAnswerKey =
   | 'trigger'
@@ -119,6 +121,7 @@ export interface ApiProcesso {
     | 'ajustes_solicitados'
     | 'aprovado'
     | 'publicado'
+    | 'excluido'
   versao_atual: string
   bpmn_xml_atual: string | null
   criado_por: string
@@ -144,4 +147,20 @@ export interface ApiProcesso {
     gerado_por_nome: string
     criado_em: string
   }>
+  revisoes_governanca?: Array<{
+    id: string
+    revisor_nome: string
+    decisao: 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
+    parecer: string
+    criado_em: string
+  }>
+  exclusao?: {
+    id: string
+    processo_codigo: string | null
+    usuario_nome: string
+    usuario_email: string
+    numero_versao: string
+    motivo: string
+    criado_em: string
+  } | null
 }
