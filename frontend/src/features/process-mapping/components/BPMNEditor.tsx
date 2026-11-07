@@ -32,10 +32,27 @@ import {
 
 interface CanvasService {
   zoom: (value: number | 'fit-viewport') => number
-  viewbox: () => { scale: number }
+  viewbox: (box?: { x: number; y: number; width: number; height: number }) => {
+    x: number
+    y: number
+    width: number
+    height: number
+    scale: number
+  }
   scrollToElement: (element: unknown) => void
   getRootElement: () => unknown
   resized: () => void
+}
+
+interface ElementoDiagrama {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+}
+
+interface ElementRegistryService {
+  getAll: () => ElementoDiagrama[]
 }
 
 interface EventBusService {
@@ -140,11 +157,49 @@ export function BPMNEditor({
   }, [edicaoDisponivel, isEditing])
 
   const enquadrar = React.useCallback(() => {
-    const canvas = instanceRef.current?.get<CanvasService>('canvas')
+    const instance = instanceRef.current
     const container = containerRef.current
-    if (!canvas || !container || container.clientWidth === 0 || container.clientHeight === 0) return
+    if (!instance || !container || container.clientWidth === 0 || container.clientHeight === 0) return
+
+    const canvas = instance.get<CanvasService>('canvas')
+    const registry = instance.get<ElementRegistryService>('elementRegistry')
     canvas.resized()
-    canvas.zoom('fit-viewport')
+
+    // Enquadra e centraliza a partir do bounding box real dos elementos.
+    const elementos = registry.getAll().filter(
+      (elemento): elemento is Required<ElementoDiagrama> =>
+        typeof elemento.x === 'number' &&
+        typeof elemento.y === 'number' &&
+        typeof elemento.width === 'number' &&
+        typeof elemento.height === 'number' &&
+        elemento.width > 0 &&
+        elemento.height > 0,
+    )
+
+    if (elementos.length === 0) {
+      canvas.zoom('fit-viewport')
+      return
+    }
+
+    const minX = Math.min(...elementos.map((elemento) => elemento.x))
+    const minY = Math.min(...elementos.map((elemento) => elemento.y))
+    const maxX = Math.max(...elementos.map((elemento) => elemento.x + elemento.width))
+    const maxY = Math.max(...elementos.map((elemento) => elemento.y + elemento.height))
+    const margem = 30
+
+    const larguraConteudo = maxX - minX + margem * 2
+    const alturaConteudo = maxY - minY + margem * 2
+    const escala = Math.min(
+      container.clientWidth / larguraConteudo,
+      container.clientHeight / alturaConteudo,
+    )
+
+    canvas.viewbox({
+      x: (minX + maxX) / 2 - container.clientWidth / escala / 2,
+      y: (minY + maxY) / 2 - container.clientHeight / escala / 2,
+      width: container.clientWidth / escala,
+      height: container.clientHeight / escala,
+    })
   }, [])
 
   /**

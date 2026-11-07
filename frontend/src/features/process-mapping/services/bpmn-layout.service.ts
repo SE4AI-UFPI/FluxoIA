@@ -1,4 +1,5 @@
 import type { ProcessStatus } from '../types/process.types'
+import { organizarDiagrama } from './bpmn-auto-layout.service'
 
 /**
  * Estados em que o autor ainda pode ajustar o diagrama (Fase 10).
@@ -62,8 +63,14 @@ export const EVENTOS_ESTRUTURAIS_BLOQUEADOS = [
   'connection.move',
 ] as const
 
-/** Recalcula o layout visual preservando a semântica BPMN. */
+/**
+ * Recalcula o layout visual preservando a semântica BPMN.
+ *
+ * Usa o organizador próprio do FluxoIA: ele reescreve apenas o DI (posições das
+ * formas, waypoints das conexões e bounds de pool/lane). A biblioteca
+ * `bpmn-auto-layout` foi avaliada e descartada — no nosso XML ela removia todas
+ * as `BPMNEdge` (diagrama sem conectores) e empilhava o fluxo na vertical.
+ */
 export async function gerarLayoutAutomatico(bpmnXml: string): Promise<string> {
-  const { layoutProcess } = await import('bpmn-auto-layout')
-  return layoutProcess(bpmnXml)
+  return organizarDiagrama(bpmnXml)
 }

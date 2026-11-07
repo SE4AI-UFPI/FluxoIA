@@ -18,6 +18,7 @@ import {
 } from '../services/process.service'
 import {
   canEditBpmnLayout,
+  gerarLayoutAutomatico,
   MOTIVO_BLOQUEIO_EDICAO,
 } from '../services/bpmn-layout.service'
 import type {
@@ -170,6 +171,36 @@ export function useProcessWizard(user: Usuario) {
     void persistToBackend(saved)
   }
 
+  /**
+   * Aplica o auto layout ao diagrama gerado e persiste o resultado.
+   *
+   * Nenhuma falha aqui pode interromper a geração: se o layout ou o salvamento
+   * falharem, o estado recebido é devolvido (com o XML organizado quando possível).
+   */
+  async function aplicarLayoutAutomatico(
+    estado: ProcessWizardState,
+    backendId: string,
+  ): Promise<ProcessWizardState> {
+    if (!estado.bpmnXml) return estado
+
+    let organizado: string
+    try {
+      organizado = await gerarLayoutAutomatico(estado.bpmnXml)
+    } catch {
+      return estado
+    }
+    if (!organizado || organizado === estado.bpmnXml) return estado
+
+    try {
+      const atualizado = await saveBpmnLayoutToApi(backendId, organizado)
+      const remapeado = mapApiProcessoToWizardState(atualizado, user.id, defaultSector)
+      return { ...remapeado, bpmnXml: organizado }
+    } catch {
+      // Persistência best-effort: o diagrama organizado segue no rascunho local.
+      return { ...estado, bpmnXml: organizado }
+    }
+  }
+
   async function generateBpmn() {
     setIsGeneratingBpmn(true)
     setAiGenerationError(null)
@@ -182,8 +213,13 @@ export function useProcessWizard(user: Usuario) {
 
       const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
       const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+
+      // Etapa de Auto Layout: reorganiza apenas o DI do diagrama recém-gerado.
+      // Roda em modo best-effort — se falhar, o XML original da IA é mantido.
+      const estadoComLayout = await aplicarLayoutAutomatico(mapped, backendId)
+
       const nextState: ProcessWizardState = {
-        ...mapped,
+        ...estadoComLayout,
         step: 3,
         status: 'Em Modelagem BPMN',
       }
