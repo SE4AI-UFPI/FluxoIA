@@ -91,6 +91,10 @@ export function InterviewStep({
   const requiredQuestions = currentQuestions.filter((q) => q.required)
   const requiredAnsweredCount = requiredQuestions.filter((q) => Boolean(answers[q.id]?.trim())).length
   const allRequiredAnswered = requiredQuestions.length > 0 && requiredAnsweredCount === requiredQuestions.length
+  const lastQuestion = currentQuestions[currentQuestions.length - 1]
+  const isAtLastQuestion = currentQuestionIndex === currentQuestions.length - 1
+  const isLastQuestionAnswered = Boolean(lastQuestion && answers[lastQuestion.id]?.trim())
+  const isInterviewComplete = isAtLastQuestion && isLastQuestionAnswered && allRequiredAnswered
   const progressPercent = Math.round((answeredCount / Math.max(1, currentQuestions.length)) * 100)
 
   // Envio de resposta
@@ -106,7 +110,7 @@ export function InterviewStep({
 
     if (editingKey) {
       setEditingKey(null)
-      setInputText(answers[currentQuestion.id] ?? '')
+      setInputText('')
     } else {
       // Avança para a próxima pergunta se não for a última
       if (currentQuestionIndex < currentQuestions.length - 1) {
@@ -256,75 +260,93 @@ export function InterviewStep({
 
         {/* Barra de Entrada (Input de Chat) */}
         <div className="border-t border-fx-linha bg-white p-3 sm:p-4">
-          {editingKey ? (
-            <div className="mb-2 flex items-center justify-between text-xs text-fx-azul bg-fx-nevoa/60 border border-fx-azul/30 px-3 py-1.5 rounded-sm">
-              <span className="flex items-center gap-1.5">
-                <Edit2 className="h-3.5 w-3.5 text-fx-azul" />
-                Editando resposta de: <strong>{currentQuestions.find(q => q.id === editingKey)?.title}</strong>
+          {isInterviewComplete && !editingKey ? (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-sm border border-fx-sucesso/40 bg-fx-sucesso/10 px-3.5 py-2.5 text-xs text-fx-marinho">
+              <span className="flex items-center gap-2">
+                <Check className="h-4 w-4 shrink-0 text-fx-sucesso" />
+                <span>
+                  <strong>Entrevista concluída!</strong> Todas as perguntas foram percorridas. Para alterar alguma resposta, clique em <strong>Editar</strong> na mensagem desejada acima.
+                </span>
               </span>
-              <button
-                type="button"
-                onClick={cancelEditing}
-                className="flex items-center gap-1 text-fx-cinza hover:text-fx-marinho font-semibold"
-              >
-                <X className="h-3 w-3" />
-                Cancelar edição
-              </button>
             </div>
           ) : (
-            <div className="mb-2 flex items-center justify-between text-xs text-fx-cinza">
-              <span>
-                Respondendo: <strong>{currentQuestion.title}</strong> ({currentQuestionIndex + 1} de {currentQuestions.length})
-              </span>
-              <span className="text-[11px] hidden sm:inline">Pressione <strong>Enter</strong> para enviar, <strong>Shift+Enter</strong> para quebrar linha</span>
-            </div>
+            <>
+              {editingKey ? (
+                <div className="mb-2 flex items-center justify-between text-xs text-fx-azul bg-fx-nevoa/60 border border-fx-azul/30 px-3 py-1.5 rounded-sm">
+                  <span className="flex items-center gap-1.5">
+                    <Edit2 className="h-3.5 w-3.5 text-fx-azul" />
+                    Editando resposta de: <strong>{currentQuestions.find(q => q.id === editingKey)?.title}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="flex items-center gap-1 text-fx-cinza hover:text-fx-marinho font-semibold"
+                  >
+                    <X className="h-3 w-3" />
+                    Cancelar edição
+                  </button>
+                </div>
+              ) : (
+                <div className="mb-2 flex items-center justify-between text-xs text-fx-cinza">
+                  <span>
+                    Respondendo: <strong>{currentQuestion.title}</strong> ({currentQuestionIndex + 1} de {currentQuestions.length})
+                  </span>
+                  <span className="text-[11px] hidden sm:inline">Pressione <strong>Enter</strong> para enviar, <strong>Shift+Enter</strong> para quebrar linha</span>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={inputRef}
+                  rows={2}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    editingKey
+                      ? "Atualize sua resposta e clique em Salvar Alteração..."
+                      : currentQuestion.required
+                      ? "Digite sua resposta detalhada e clique em Enviar..."
+                      : "Digite sua resposta (ou clique em Pular se não se aplicar)..."
+                  }
+                  className={`flex-1 resize-none rounded-lg border px-3.5 py-2.5 text-sm text-fx-grafite placeholder:text-fx-cinza/60 focus-visible:outline-none focus-visible:ring-2 ${
+                    editingKey
+                      ? 'border-fx-azul bg-white focus-visible:ring-fx-azul ring-1 ring-fx-azul/40'
+                      : 'border-fx-linha bg-fx-papel focus-visible:ring-fx-azul'
+                  }`}
+                />
+
+                {!editingKey && !currentQuestion.required && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSkip}
+                    className="h-10 text-xs text-fx-cinza hover:text-fx-marinho"
+                    title="Pular pergunta opcional"
+                  >
+                    <SkipForward className="h-4 w-4 mr-1" />
+                    Pular
+                  </Button>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={
+                    Boolean(
+                      currentQuestions.find((q) => q.id === (editingKey || currentQuestion.id))
+                        ?.required && !inputText.trim(),
+                    )
+                  }
+                  className="h-10 px-4"
+                >
+                  {editingKey ? <Check className="h-4 w-4 mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
+                  {editingKey ? 'Salvar Alteração' : 'Enviar'}
+                </Button>
+              </div>
+            </>
           )}
-
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={inputRef}
-              rows={2}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                editingKey
-                  ? "Atualize sua resposta e clique em Salvar Alteração..."
-                  : currentQuestion.required
-                  ? "Digite sua resposta detalhada e clique em Enviar..."
-                  : "Digite sua resposta (ou clique em Pular se não se aplicar)..."
-              }
-              className={`flex-1 resize-none rounded-lg border px-3.5 py-2.5 text-sm text-fx-grafite placeholder:text-fx-cinza/60 focus-visible:outline-none focus-visible:ring-2 ${
-                editingKey
-                  ? 'border-fx-azul bg-white focus-visible:ring-fx-azul ring-1 ring-fx-azul/40'
-                  : 'border-fx-linha bg-fx-papel focus-visible:ring-fx-azul'
-              }`}
-            />
-
-            {!editingKey && !currentQuestion.required && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleSkip}
-                className="h-10 text-xs text-fx-cinza hover:text-fx-marinho"
-                title="Pular pergunta opcional"
-              >
-                <SkipForward className="h-4 w-4 mr-1" />
-                Pular
-              </Button>
-            )}
-
-            <Button
-              type="button"
-              onClick={handleSend}
-              disabled={currentQuestion.required && !inputText.trim()}
-              className="h-10 px-4"
-            >
-              {editingKey ? <Check className="h-4 w-4 mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
-              {editingKey ? 'Salvar Alteração' : 'Enviar'}
-            </Button>
-          </div>
         </div>
 
         {/* Barra de Ações Inferior (Navegação do Wizard) */}
@@ -339,13 +361,15 @@ export function InterviewStep({
           </div>
 
           <div className="flex items-center gap-2">
-            {allRequiredAnswered ? (
+            {isInterviewComplete ? (
               <Button type="button" onClick={onFinish} className="bg-fx-sucesso hover:bg-fx-sucesso/90 text-white">
                 Finalizar Entrevista e Gerar BPMN <Check className="h-4 w-4 ml-1.5" />
               </Button>
             ) : (
               <span className="text-xs text-fx-cinza">
-                Responda às {requiredQuestions.length - requiredAnsweredCount} perguntas obrigatórias restantes para gerar o BPMN.
+                {!allRequiredAnswered
+                  ? `Responda às ${requiredQuestions.length - requiredAnsweredCount} perguntas obrigatórias restantes para concluir a entrevista.`
+                  : `Conclua ou pule as etapas até o Passo ${currentQuestions.length} para finalizar a entrevista.`}
               </span>
             )}
           </div>

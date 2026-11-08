@@ -74,6 +74,11 @@ export function ProcessMappingPage() {
   const { process } = wizard
 
   function saveDraft() {
+    if (!process.info.name.trim()) {
+      setPageError('Informe ao menos o nome do processo antes de salvar um rascunho.')
+      setNotice(null)
+      return
+    }
     wizard.saveDraft()
     setPageError(null)
     setNotice('Rascunho salvo nesta sessão.')
@@ -223,7 +228,7 @@ export function ProcessMappingPage() {
           </div>
           <div className="flex items-center gap-2">
             <ProcessStatus status={process.status} />
-            {canDeleteProcess(process.status) && (
+            {canDeleteProcess(process.status) && Boolean(process.backendId || wizard.lastSavedAt) && (
               <Button
                 type="button"
                 variant="destructive"

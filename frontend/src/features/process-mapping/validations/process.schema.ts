@@ -13,7 +13,15 @@ export function validateProcessInfo(info: ProcessInfo): ProcessInfoErrors {
 export function getInterviewErrors(
   answers: Record<InterviewAnswerKey, string>,
 ): Partial<Record<InterviewAnswerKey, string>> {
-  const required: InterviewAnswerKey[] = ['trigger', 'activities', 'areasInvolved', 'sequence', 'responsibles']
+  const required: InterviewAnswerKey[] = [
+    'trigger',
+    'activities',
+    'areasInvolved',
+    'sequence',
+    'responsibles',
+    'approvals',
+    'completion',
+  ]
   return Object.fromEntries(
     required
       .filter((key) => !answers[key].trim())

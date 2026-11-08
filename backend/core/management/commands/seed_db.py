@@ -145,7 +145,7 @@ class Command(BaseCommand):
                 "ordem": 6,
                 "titulo": "Aprovações e Vistorias",
                 "enunciado": "Existe alguma etapa formal de aprovação, visto, vistoria técnica, despacho de chefia ou parecer jurídico?",
-                "obrigatoria": False,
+                "obrigatoria": True,
                 "ativa": True,
             },
             {
@@ -193,7 +193,7 @@ class Command(BaseCommand):
                 "ordem": 12,
                 "titulo": "Encerramento e Entrega",
                 "enunciado": "Quando o processo é considerado concluído e o que é entregue ou registrado ao final (ex: emissão de certidão/licença, deferimento, publicação ou arquivamento)?",
-                "obrigatoria": False,
+                "obrigatoria": True,
                 "ativa": True,
             },
         ]

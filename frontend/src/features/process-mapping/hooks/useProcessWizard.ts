@@ -29,15 +29,17 @@ import type {
   ProcessStep,
   ProcessWizardState,
 } from '../types/process.types'
+import { SETORES_INSTITUCIONAIS } from '@/constants/institutionalSectors'
 import { useVersionControl } from './useVersionControl'
 
-const DEFAULT_INSTITUTIONAL_SECTORS = [
-  'SDU: Protocolo',
-  'SDU: Licenciamento',
-  'SDU: CEU - DAP',
-  'SECTI: Governança Digital',
-  'SEAD: Gestão de Processos',
-]
+function isProcessStarted(state: ProcessWizardState): boolean {
+  return (
+    Boolean(state.backendId) ||
+    state.step > 1 ||
+    Boolean(state.info.name.trim() && state.info.objective.trim()) ||
+    Object.values(state.answers).some((val) => Boolean(val?.trim()))
+  )
+}
 
 export function useProcessWizard(user: Usuario) {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -51,18 +53,20 @@ export function useProcessWizard(user: Usuario) {
 
   const allowedSectors = React.useMemo(() => {
     const userSectors = [...new Set([user.setor, ...(user.setores_vinculados ?? [])].filter(Boolean))]
-    if (user.papel === 'admin' || userSectors.length < 2) {
-      return [...new Set([...userSectors, ...DEFAULT_INSTITUTIONAL_SECTORS])]
+    if (user.papel === 'admin' || userSectors.length === 0) {
+      return [...new Set([...userSectors, ...SETORES_INSTITUCIONAIS])]
     }
     return userSectors
   }, [user.papel, user.setor, user.setores_vinculados])
 
-  const defaultSector = allowedSectors[0] ?? DEFAULT_INSTITUTIONAL_SECTORS[0]
+  const defaultSector = allowedSectors[0] ?? SETORES_INSTITUCIONAIS[0]
 
   const [process, setProcess] = React.useState<ProcessWizardState>(() =>
     startFresh ? createInitialProcess(user.id, defaultSector) : loadProcessDraft(user.id, defaultSector),
   )
-  const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(() =>
+    !startFresh && isProcessStarted(process) ? process.updatedAt : null,
+  )
   const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
   const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = React.useState(false)
@@ -87,6 +91,20 @@ export function useProcessWizard(user: Usuario) {
   }, [defaultSector, process.info.sector])
 
   React.useEffect(() => {
+    if (processoQueryId || !process.bpmnXml) return
+    let active = true
+    void gerarLayoutAutomatico(process.bpmnXml)
+      .then((organizado) => {
+        if (!active || !organizado || organizado === process.bpmnXml) return
+        setProcess((current) => ({ ...current, bpmnXml: organizado }))
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [processoQueryId, process.id])
+
+  React.useEffect(() => {
     if (!processoQueryId || !user.id) return
     let active = true
 
@@ -100,9 +118,8 @@ export function useProcessWizard(user: Usuario) {
         saveProcessDraft(mapped)
         setLastSavedAt(mapped.updatedAt)
 
-        // Diagramas gerados por versões anteriores podem ter conectores cruzando
-        // formas: reorganiza ao abrir, em modo best-effort.
-        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
+        // Reorganiza automaticamente o DI ao abrir em modo best-effort.
+        void aplicarLayoutAutomatico(mapped, apiProcesso.id)
           .then((normalizado) => {
             if (!active || normalizado === mapped) return
             setProcess(normalizado)
@@ -122,6 +139,7 @@ export function useProcessWizard(user: Usuario) {
 
   React.useEffect(() => {
     if (!user.id || process.status === 'Aguardando Validação do Gestor') return
+    if (!isProcessStarted(process)) return
     const timeout = window.setTimeout(() => {
       const saved = saveProcessDraft(process)
       setLastSavedAt(saved.updatedAt)
@@ -377,7 +395,7 @@ export function useProcessWizard(user: Usuario) {
     setAiGenerationError(null)
     const fresh = createInitialProcess(user.id, defaultSector)
     setProcess(fresh)
-    saveProcessDraft(fresh)
+    setLastSavedAt(null)
   }
 
   return {
