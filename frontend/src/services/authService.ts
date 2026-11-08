@@ -21,6 +21,9 @@ export const tokenStorage = {
     localStorage.setItem(REFRESH_TOKEN_KEY, refresh)
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
   },
+  setAccess: (access: string) => {
+    localStorage.setItem(ACCESS_TOKEN_KEY, access)
+  },
   updateStoredUser: (user: Usuario) => {
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
   },
@@ -29,6 +32,39 @@ export const tokenStorage = {
     localStorage.removeItem(REFRESH_TOKEN_KEY)
     localStorage.removeItem(USER_STORAGE_KEY)
   },
+}
+
+let refreshPromise: Promise<string | null> | null = null
+
+export async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise
+
+  const refresh = tokenStorage.getRefresh()
+  if (!refresh) return null
+
+  refreshPromise = fetch('/api/auth/refresh/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh }),
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        tokenStorage.clear()
+        return null
+      }
+      const data = (await res.json().catch(() => null)) as { access?: string } | null
+      if (data?.access) {
+        tokenStorage.setAccess(data.access)
+        return data.access
+      }
+      return null
+    })
+    .catch(() => null)
+    .finally(() => {
+      refreshPromise = null
+    })
+
+  return refreshPromise
 }
 
 function extractErrorMessage(data: unknown, fallback: string): string {
@@ -68,16 +104,27 @@ export const authService = {
   },
 
   async fetchMe(): Promise<Usuario> {
-    const access = tokenStorage.getAccess()
+    let access = tokenStorage.getAccess()
     if (!access) {
       throw new Error('Sessão não autenticada.')
     }
 
-    const res = await fetch('/api/auth/me/', {
+    let res = await fetch('/api/auth/me/', {
       headers: {
         Authorization: `Bearer ${access}`,
       },
     })
+
+    if (res.status === 401) {
+      access = await refreshAccessToken()
+      if (access) {
+        res = await fetch('/api/auth/me/', {
+          headers: {
+            Authorization: `Bearer ${access}`,
+          },
+        })
+      }
+    }
 
     if (!res.ok) {
       tokenStorage.clear()

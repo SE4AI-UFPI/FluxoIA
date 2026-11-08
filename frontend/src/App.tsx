@@ -25,12 +25,6 @@ const SupervisorReportsPage = lazy(() =>
   })),
 )
 
-const RelatoriosEmConstrucaoPage = lazy(() =>
-  import('@/features/supervisor/pages/RelatoriosEmConstrucaoPage').then((module) => ({
-    default: module.RelatoriosEmConstrucaoPage,
-  })),
-)
-
 const BPMNViewerBibliotecaPage = lazy(() =>
   import('@/features/bpmn-viewer/pages/BPMNViewerPage').then((module) => ({
     default: module.BPMNViewerPage,
@@ -72,22 +66,6 @@ function BpmnViewerRoute() {
       ) : (
         <Suspense fallback={<Fallback mensagem="Carregando visualizador BPMN..." />}>
           <BPMNViewerBibliotecaPage />
-        </Suspense>
-      )}
-    </ProtectedRoute>
-  )
-}
-
-function RelatoriosRoute() {
-  const { user } = useAuth()
-
-  return (
-    <ProtectedRoute>
-      {user && !canAccessMenu(user, 'reports:view') ? (
-        <Navigate to="/" replace />
-      ) : (
-        <Suspense fallback={<Fallback mensagem="Carregando relatórios..." />}>
-          <RelatoriosEmConstrucaoPage />
         </Suspense>
       )}
     </ProtectedRoute>
@@ -184,7 +162,7 @@ export function App() {
           <Route path="/processos/novo" element={<ProcessMappingRoute />} />
           <Route path="/governanca" element={<GovernanceRoute />} />
           <Route path="/indicadores" element={<ReportsRoute permissao="indicators:view" />} />
-          <Route path="/relatorios" element={<RelatoriosRoute />} />
+          <Route path="/relatorios" element={<ReportsRoute permissao="reports:view" />} />
           <Route path="/bpmn" element={<BpmnViewerRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

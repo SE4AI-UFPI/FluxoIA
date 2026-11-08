@@ -42,23 +42,16 @@ export const MENU_ITEMS: MenuConfigItem[] = [
   },
   {
     id: 'indicators',
-    label: 'Indicadores',
+    label: 'Relatórios & Indicadores',
     path: '/indicadores',
     icon: ChartNoAxesCombined,
     permission: 'indicators:view',
   },
   {
     id: 'user-management',
-    label: 'Cadastro de Usuários',
+    label: 'Gestão de Usuários',
     path: '/usuarios/novo',
     icon: UsersRound,
     permission: 'users:manage',
-  },
-  {
-    id: 'reports',
-    label: 'Relatórios',
-    path: '/relatorios',
-    icon: ChartNoAxesCombined,
-    permission: 'reports:view',
   },
 ]
