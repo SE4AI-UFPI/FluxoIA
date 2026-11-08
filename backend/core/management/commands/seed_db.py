@@ -1,14 +1,20 @@
 import os
-import uuid
+from datetime import timedelta
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 from core.models import (
+    DecisaoGovernanca,
     EntrevistaProcesso,
+    OrigemVersaoBPMN,
     PapelUsuario,
     PerguntaEntrevista,
     Processo,
+    RevisaoGovernanca,
     StatusProcesso,
     User,
+    VersaoFluxoBPMN,
 )
+from core.services.bpmn_ai_service import BpmnEstruturaGerada, compilar_bpmn_xml
 
 
 class Command(BaseCommand):
@@ -34,7 +40,7 @@ class Command(BaseCommand):
                 "papel": PapelUsuario.SUPERVISOR,
                 "secretaria": "SDU Leste",
                 "setor": "SDU: Protocolo",
-                "setores_vinculados": ["SDU: Protocolo", "SDU: Licenciamento"],
+                "setores_vinculados": ["SDU: Protocolo", "SDU: Licenciamento", "SDU: CEU - DAP"],
                 "cargo": "Supervisora de Setor",
                 "matricula": "SUP-001",
             },
@@ -284,13 +290,167 @@ class Command(BaseCommand):
             },
         ]
 
+        if supervisor and "SDU: CEU - DAP" not in (supervisor.setores_vinculados or []):
+            supervisor.setores_vinculados = list(
+                dict.fromkeys([*(supervisor.setores_vinculados or []), "SDU: Protocolo", "SDU: Licenciamento", "SDU: CEU - DAP"])
+            )
+            supervisor.save(update_fields=["setores_vinculados"])
+
+        estruturas_seed = {
+            "BPMN-SDU-2026-00001": {
+                "resumo_modelo": "Fluxo de licenciamento urbanístico com conferência no Protocolo, vistoria fiscal e decisão na Diretoria de Licenciamento.",
+                "ficha_tecnica": {
+                    "legenda": ["▲ Caso seja notificado (Em caso de pendência documental)"],
+                    "observacoes_prazo": "Prazo máximo de 15 dias úteis para parecer fiscal; 10 dias para saneamento de pendências.",
+                    "informacoes_gerais": "Tramitar e analisar solicitações de alvará e licenças urbanísticas conforme Código de Obras Municipal.",
+                    "sistemas": ["Sistema SEI", "Plataforma Gov.pi"],
+                    "documentacao": ["Requerimento padrão", "Certidão de registro do imóvel", "ART/RRT"],
+                    "taxas": ["Taxa de Licença de Obras (DAM Municipal)"],
+                },
+                "raias": [
+                    {"id": "Lane_Req", "nome": "Requerente"},
+                    {"id": "Lane_Prot", "nome": "SDU: Protocolo"},
+                    {"id": "Lane_Lic", "nome": "SDU: Licenciamento"},
+                ],
+                "elementos": [
+                    {"id": "Start_1", "tipo": "startEvent", "nome": "Solicitação de alvará", "raia_id": "Lane_Req", "origem_entrevista": "trigger"},
+                    {"id": "Task_1", "tipo": "task", "nome": "1. Protocolar requerimento e anexos", "raia_id": "Lane_Req", "origem_entrevista": "trigger"},
+                    {"id": "Task_2", "tipo": "task", "nome": "2. Triagem e conferência documental", "raia_id": "Lane_Prot", "origem_entrevista": "activities"},
+                    {"id": "Gateway_1", "tipo": "exclusiveGateway", "nome": "Documentação completa?", "raia_id": "Lane_Prot", "origem_entrevista": "exceptions"},
+                    {"id": "Task_2_1", "tipo": "task", "nome": "2.1 Sanear pendência documental (10 dias)", "raia_id": "Lane_Req", "origem_entrevista": "exceptions"},
+                    {"id": "Task_3", "tipo": "task", "nome": "3. Realizar vistoria fiscal e parecer técnico", "raia_id": "Lane_Lic", "origem_entrevista": "activities"},
+                    {"id": "Gateway_2", "tipo": "exclusiveGateway", "nome": "Deferido pela Diretoria?", "raia_id": "Lane_Lic", "origem_entrevista": "approvals"},
+                    {"id": "Task_4", "tipo": "serviceTask", "nome": "4. Emitir alvará assinado no SEI", "raia_id": "Lane_Lic", "origem_entrevista": "completion"},
+                    {"id": "End_1", "tipo": "endEvent", "nome": "Alvará entregue", "raia_id": "Lane_Lic", "origem_entrevista": "completion"},
+                ],
+                "fluxos": [
+                    {"id": "Flow_1", "origem": "Start_1", "destino": "Task_1", "condicao": ""},
+                    {"id": "Flow_2", "origem": "Task_1", "destino": "Task_2", "condicao": ""},
+                    {"id": "Flow_3", "origem": "Task_2", "destino": "Gateway_1", "condicao": ""},
+                    {"id": "Flow_4", "origem": "Gateway_1", "destino": "Task_3", "condicao": "Sim"},
+                    {"id": "Flow_5", "origem": "Gateway_1", "destino": "Task_2_1", "condicao": "Incompleta"},
+                    {"id": "Flow_6", "origem": "Task_2_1", "destino": "Task_2", "condicao": ""},
+                    {"id": "Flow_7", "origem": "Task_3", "destino": "Gateway_2", "condicao": ""},
+                    {"id": "Flow_8", "origem": "Gateway_2", "destino": "Task_4", "condicao": "Deferido"},
+                    {"id": "Flow_9", "origem": "Gateway_2", "destino": "Task_2_1", "condicao": "Ajustes"},
+                    {"id": "Flow_10", "origem": "Task_4", "destino": "End_1", "condicao": ""},
+                ],
+            },
+            "BPMN-SDU-2026-00002": {
+                "resumo_modelo": "Fluxo interno de aquisição direta por dispensa de licitação com cotação de preços, análise jurídica e empenho.",
+                "ficha_tecnica": {
+                    "legenda": ["▲ Cotação insuficiente exige justificativa de preços públicos"],
+                    "observacoes_prazo": "Valor total limitado ao teto do art. 75, II da Lei Federal nº 14.133/2021.",
+                    "informacoes_gerais": "Fluxo operacional para compras de pequeno valor e serviços emergenciais.",
+                    "sistemas": ["Sistema Integrado de Gestão Financeira", "Plataforma SEI"],
+                    "documentacao": ["DOD", "Termo de Referência", "Mapa comparativo de preços", "Nota de empenho"],
+                    "taxas": ["Não se aplica / Processo sem taxas"],
+                },
+                "raias": [
+                    {"id": "Lane_DAP", "nome": "SDU: CEU - DAP"},
+                    {"id": "Lane_Comp", "nome": "Gerência de Compras"},
+                    {"id": "Lane_Jur", "nome": "Assessoria Jurídica / Ordenador"},
+                ],
+                "elementos": [
+                    {"id": "Start_1", "tipo": "startEvent", "nome": "Demanda identificada", "raia_id": "Lane_DAP", "origem_entrevista": "trigger"},
+                    {"id": "Task_1", "tipo": "task", "nome": "1. Elaborar DOD e Estudo Técnico Preliminar", "raia_id": "Lane_DAP", "origem_entrevista": "trigger"},
+                    {"id": "Task_2", "tipo": "task", "nome": "2. Coletar cotações e montar mapa de preços", "raia_id": "Lane_Comp", "origem_entrevista": "activities"},
+                    {"id": "Gateway_1", "tipo": "exclusiveGateway", "nome": "Mínimo de 3 cotações válidas?", "raia_id": "Lane_Comp", "origem_entrevista": "exceptions"},
+                    {"id": "Task_2_1", "tipo": "task", "nome": "2.1 Anexar justificativa com preços públicos", "raia_id": "Lane_Comp", "origem_entrevista": "exceptions"},
+                    {"id": "Task_3", "tipo": "task", "nome": "3. Emitir parecer jurídico e autorizar despesa", "raia_id": "Lane_Jur", "origem_entrevista": "approvals"},
+                    {"id": "Task_4", "tipo": "serviceTask", "nome": "4. Emitir nota de empenho e Ordem de Fornecimento", "raia_id": "Lane_Jur", "origem_entrevista": "completion"},
+                    {"id": "End_1", "tipo": "endEvent", "nome": "Dispensa publicada e contratada", "raia_id": "Lane_Jur", "origem_entrevista": "completion"},
+                ],
+                "fluxos": [
+                    {"id": "Flow_1", "origem": "Start_1", "destino": "Task_1", "condicao": ""},
+                    {"id": "Flow_2", "origem": "Task_1", "destino": "Task_2", "condicao": ""},
+                    {"id": "Flow_3", "origem": "Task_2", "destino": "Gateway_1", "condicao": ""},
+                    {"id": "Flow_4", "origem": "Gateway_1", "destino": "Task_3", "condicao": "Sim"},
+                    {"id": "Flow_5", "origem": "Gateway_1", "destino": "Task_2_1", "condicao": "Não"},
+                    {"id": "Flow_6", "origem": "Task_2_1", "destino": "Task_3", "condicao": ""},
+                    {"id": "Flow_7", "origem": "Task_3", "destino": "Task_4", "condicao": ""},
+                    {"id": "Flow_8", "origem": "Task_4", "destino": "End_1", "condicao": ""},
+                ],
+            },
+            "BPMN-SDU-2026-00003": {
+                "resumo_modelo": "Fluxo de atendimento de manifestações de Ouvidoria com triagem, encaminhamento setorial e resposta ao cidadão.",
+                "ficha_tecnica": {
+                    "legenda": ["▲ Demandas sem elementos mínimos são arquivadas de ofício"],
+                    "observacoes_prazo": "Prazo legal de 20 dias corridos para resposta conclusiva, prorrogável por mais 10 dias.",
+                    "informacoes_gerais": "Recebimento, classificação e resposta de manifestações conforme Lei de Acesso à Informação.",
+                    "sistemas": ["Plataforma Fala.BR", "Ouvidoria Municipal"],
+                    "documentacao": ["Formulário de ouvidoria", "Despacho de resposta setorial"],
+                    "taxas": ["Não se aplica / Processo sem taxas"],
+                },
+                "raias": [
+                    {"id": "Lane_Cid", "nome": "Cidadão / Manifestante"},
+                    {"id": "Lane_Ouv", "nome": "SDU: Protocolo / Ouvidoria"},
+                    {"id": "Lane_Set", "nome": "Setor Demandado"},
+                ],
+                "elementos": [
+                    {"id": "Start_1", "tipo": "startEvent", "nome": "Manifestação registrada", "raia_id": "Lane_Cid", "origem_entrevista": "trigger"},
+                    {"id": "Task_1", "tipo": "task", "nome": "1. Registrar manifestação no canal de Ouvidoria", "raia_id": "Lane_Cid", "origem_entrevista": "trigger"},
+                    {"id": "Task_2", "tipo": "task", "nome": "2. Classificar teor da demanda e encaminhar", "raia_id": "Lane_Ouv", "origem_entrevista": "activities"},
+                    {"id": "Task_3", "tipo": "task", "nome": "3. Elaborar e validar resposta técnica setorial", "raia_id": "Lane_Set", "origem_entrevista": "approvals"},
+                    {"id": "Task_4", "tipo": "serviceTask", "nome": "4. Enviar resposta conclusiva ao cidadão", "raia_id": "Lane_Ouv", "origem_entrevista": "completion"},
+                    {"id": "End_1", "tipo": "endEvent", "nome": "Manifestação respondida", "raia_id": "Lane_Ouv", "origem_entrevista": "completion"},
+                ],
+                "fluxos": [
+                    {"id": "Flow_1", "origem": "Start_1", "destino": "Task_1", "condicao": ""},
+                    {"id": "Flow_2", "origem": "Task_1", "destino": "Task_2", "condicao": ""},
+                    {"id": "Flow_3", "origem": "Task_2", "destino": "Task_3", "condicao": ""},
+                    {"id": "Flow_4", "origem": "Task_3", "destino": "Task_4", "condicao": ""},
+                    {"id": "Flow_5", "origem": "Task_4", "destino": "End_1", "condicao": ""},
+                ],
+            },
+        }
+
+        agora = timezone.now()
         for dados in processos_seed:
             respostas = dados.pop("respostas")
-            processo, _ = Processo.objects.update_or_create(codigo=dados["codigo"], defaults=dados)
+            codigo = dados["codigo"]
+            if dados["status"] in (StatusProcesso.APROVADO, StatusProcesso.AGUARDANDO_VALIDACAO, StatusProcesso.AJUSTES_SOLICITADOS):
+                dados.setdefault("submetido_em", agora - timedelta(hours=18))
+            if dados["status"] == StatusProcesso.APROVADO:
+                dados.setdefault("aprovado_em", agora - timedelta(hours=4))
+
+            processo, _ = Processo.objects.update_or_create(codigo=codigo, defaults=dados)
             EntrevistaProcesso.objects.update_or_create(
                 processo=processo,
-                defaults={"pergunta_atual_idx": 10, "respostas": respostas},
+                defaults={"pergunta_atual_idx": 11, "respostas": respostas},
             )
 
-        self.stdout.write(self.style.SUCCESS(f"[OK] {len(processos_seed)} Processos com entrevistas sincronizados."))
+            versao = processo.versoes_bpmn.order_by("-criado_em").first()
+            if versao is None and codigo in estruturas_seed:
+                estrutura_obj = BpmnEstruturaGerada.model_validate(estruturas_seed[codigo])
+                bpmn_xml = compilar_bpmn_xml(processo, estrutura_obj)
+                versao = VersaoFluxoBPMN.objects.create(
+                    processo=processo,
+                    numero_versao=processo.versao_atual or "1.0.0",
+                    bpmn_xml=bpmn_xml,
+                    estrutura_json=estrutura_obj.model_dump(),
+                    origem=OrigemVersaoBPMN.IA,
+                    motivo_alteracao="Geração inicial do fluxo BPMN (Seed Institucional)",
+                    gerado_por=processo.criado_por,
+                )
+
+            if supervisor and not processo.revisoes_governanca.exists():
+                if processo.status == StatusProcesso.APROVADO:
+                    RevisaoGovernanca.objects.create(
+                        processo=processo,
+                        versao_bpmn=versao,
+                        revisor=supervisor,
+                        decisao=DecisaoGovernanca.APROVADO,
+                        parecer="Fluxo homologado em conformidade com o Código de Obras e normas de protocolo.",
+                    )
+                elif processo.status == StatusProcesso.AJUSTES_SOLICITADOS:
+                    RevisaoGovernanca.objects.create(
+                        processo=processo,
+                        versao_bpmn=versao,
+                        revisor=supervisor,
+                        decisao=DecisaoGovernanca.AJUSTES_SOLICITADOS,
+                        parecer="Incluir gateway na raia da Ouvidoria para verificar se a manifestação possui elementos mínimos antes de encaminhar ao setor demandado, e detalhar a regra de prorrogação de prazo por 10 dias.",
+                    )
+
+        self.stdout.write(self.style.SUCCESS(f"[OK] {len(processos_seed)} Processos com entrevistas e BPMN sincronizados."))
         self.stdout.write(self.style.SUCCESS("Banco de dados populado com sucesso!"))
