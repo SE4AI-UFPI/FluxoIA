@@ -2,13 +2,13 @@ import * as React from 'react'
 import {
   Expand,
   FileCode2,
+  FileDown,
   ImageDown,
   Loader2,
   Maximize2,
   Minus,
   Move,
   Plus,
-  Printer,
 } from 'lucide-react'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import 'bpmn-js/dist/assets/diagram-js.css'
@@ -217,17 +217,55 @@ export default function BPMNViewer({ xml, nomeArquivo }: { xml: string; nomeArqu
     }
   }
 
-  async function imprimir() {
-    const resultado = await viewerRef.current?.saveSVG()
-    if (!resultado?.svg) return
-    const janela = window.open('', '_blank', 'width=1200,height=800')
-    if (!janela) return
-    janela.document.write(
-      `<html lang="pt-BR"><head><title>${nomeArquivo}</title><style>body{margin:24px;font-family:sans-serif}svg{max-width:100%;height:auto}</style></head><body>${resultado.svg}</body></html>`,
-    )
-    janela.document.close()
-    janela.focus()
-    janela.print()
+  async function baixarPdf() {
+    try {
+      const resultado = await viewerRef.current?.saveSVG()
+      if (!resultado?.svg) return
+
+      const svgUrl = URL.createObjectURL(new Blob([resultado.svg], { type: 'image/svg+xml' }))
+      const imagem = new Image()
+      imagem.src = svgUrl
+      await new Promise<void>((resolve, reject) => {
+        imagem.onload = () => resolve()
+        imagem.onerror = () => reject(new Error('Não foi possível preparar o diagrama para PDF.'))
+      })
+
+      const canvas = document.createElement('canvas')
+      canvas.width = (imagem.naturalWidth || 1200) * 2
+      canvas.height = (imagem.naturalHeight || 600) * 2
+      const contexto = canvas.getContext('2d')
+      if (!contexto) throw new Error('Não foi possível gerar a imagem do diagrama.')
+      contexto.fillStyle = '#ffffff'
+      contexto.fillRect(0, 0, canvas.width, canvas.height)
+      contexto.drawImage(imagem, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(svgUrl)
+
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({
+        orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+        unit: 'pt',
+        format: 'a4',
+      })
+      const larguraPagina = pdf.internal.pageSize.getWidth()
+      const alturaPagina = pdf.internal.pageSize.getHeight()
+      const escala = Math.min(
+        (larguraPagina - 48) / canvas.width,
+        (alturaPagina - 48) / canvas.height,
+      )
+      const largura = canvas.width * escala
+      const altura = canvas.height * escala
+      pdf.addImage(
+        canvas.toDataURL('image/png'),
+        'PNG',
+        (larguraPagina - largura) / 2,
+        (alturaPagina - altura) / 2,
+        largura,
+        altura,
+      )
+      baixarBlob(`${nomeArquivo}.pdf`, pdf.output('blob'))
+    } catch (causa) {
+      setErro(causa instanceof Error ? causa.message : 'Não foi possível baixar o PDF.')
+    }
   }
 
   return (
@@ -291,8 +329,8 @@ export default function BPMNViewer({ xml, nomeArquivo }: { xml: string; nomeArqu
           <Button type="button" size="icon" variant="outline" className="h-8 w-8" aria-label="Baixar PNG" title="Baixar PNG" onClick={() => void baixarPng()}>
             <ImageDown className="h-4 w-4 rotate-180" />
           </Button>
-          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label="Imprimir" title="Imprimir" onClick={() => void imprimir()}>
-            <Printer className="h-4 w-4" />
+          <Button type="button" size="sm" variant="outline" aria-label="Baixar PDF" title="Baixar PDF" onClick={() => void baixarPdf()}>
+            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF
           </Button>
         </div>
       </div>

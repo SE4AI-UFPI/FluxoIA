@@ -11,7 +11,6 @@ import {
   Move,
   Plus,
   Save,
-  Sparkles,
   Undo2,
 } from 'lucide-react'
 import BpmnModeler from 'bpmn-js/lib/Modeler'
@@ -26,7 +25,6 @@ import {
   canEditBpmnLayout,
   comandoFuncionalBloqueado,
   EVENTOS_ESTRUTURAIS_BLOQUEADOS,
-  gerarLayoutAutomatico,
   MOTIVO_BLOQUEIO_EDICAO,
   MOTIVO_BLOQUEIO_MOBILE,
 } from '../services/bpmn-layout.service'
@@ -143,7 +141,6 @@ export function BPMNEditor({
   const [dirty, setDirty] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-  const [organizing, setOrganizing] = React.useState(false)
 
   React.useEffect(() => {
     xmlRef.current = xmlVigente
@@ -297,31 +294,6 @@ export function BPMNEditor({
     commandStack.undo()
   }
 
-  async function organizarAutomaticamente() {
-    const instance = instanceRef.current
-    if (!instance) return
-    setOrganizing(true)
-    setError(null)
-    try {
-      const atual = await instance.saveXML({ format: true })
-      const novoXml = await gerarLayoutAutomatico(atual.xml ?? xmlRef.current)
-      importingRef.current = true
-      await instance.importXML(novoXml)
-      importingRef.current = false
-      enquadrar()
-      setDirty(true)
-    } catch (cause) {
-      importingRef.current = false
-      setError(
-        cause instanceof Error
-          ? `Não foi possível organizar o layout: ${cause.message}`
-          : 'Não foi possível organizar o layout automaticamente.',
-      )
-    } finally {
-      setOrganizing(false)
-    }
-  }
-
   async function salvarAjustes() {
     const instance = instanceRef.current
     try {
@@ -406,7 +378,7 @@ export function BPMNEditor({
     else await element.requestFullscreen()
   }
 
-  const ocupado = loading || organizing || isSaving
+  const ocupado = loading || isSaving
 
   return (
     <section aria-label="Editor de diagrama BPMN" className="space-y-2">
@@ -433,21 +405,6 @@ export function BPMNEditor({
             title="Centralizar o fluxo na área visível"
           >
             <LayoutDashboard className="mr-1 h-3.5 w-3.5" /> Centralizar
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void organizarAutomaticamente()}
-            disabled={ocupado}
-            title="Recalcular o layout corrigindo sobreposições, sem alterar a lógica BPMN"
-          >
-            {organizing ? (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="mr-1 h-3.5 w-3.5" />
-            )}
-            Organizar Automaticamente
           </Button>
           <span className="mx-1 hidden h-6 w-px bg-fx-linha sm:block" aria-hidden="true" />
           <Button

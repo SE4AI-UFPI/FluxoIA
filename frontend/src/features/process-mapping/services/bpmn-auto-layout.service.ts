@@ -48,24 +48,26 @@ const TIPOS_CONTAINER = new Set(['participant', 'lane', 'subProcess'])
 const TAMANHO_PADRAO: Record<string, { largura: number; altura: number }> = {
   evento: { largura: 36, altura: 36 },
   gateway: { largura: 50, altura: 50 },
-  atividade: { largura: 110, altura: 80 },
+  atividade: { largura: 140, altura: 80 },
 }
 
 const METRICA = {
-  margemExterna: 40,
-  espacoHorizontal: 70,
-  espacoVertical: 40,
-  espacoColuna: 24,
-  paddingLane: 30,
-  alturaTituloPool: 30,
-  alturaCabecalhoLane: 30,
-  folgaLabel: 8,
-  /** Faixa à esquerda reservada ao nome da lane/pool. */
-  insetConteudo: 40,
+  margemExterna: 60,
+  espacoHorizontal: 95,
+  espacoVertical: 56,
+  paddingLane: 100,
+  larguraHeaderPool: 30,
+  larguraHeaderLane: 30,
+  /** Espaço horizontal após o cabeçalho da raia antes da primeira coluna. */
+  insetConteudo: 95,
+  margemDireitaPool: 60,
+  /** Margem interna segura dentro da raia para corredores horizontais (longe da borda da raia). */
+  corredorInternoRaia: 22,
 }
 
 interface NoDiagrama {
   id: string
+  nome: string
   tipo: string
   largura: number
   altura: number
@@ -80,6 +82,7 @@ interface Conexao {
   id: string
   origem: string
   destino: string
+  nome: string
 }
 
 interface Caixa {
@@ -130,13 +133,19 @@ function criarElemento(doc: Document, ns: string, nome: string): Element {
 function dimensoesPadrao(tipo: string): { largura: number; altura: number } {
   if (tipo === 'startEvent' || tipo === 'endEvent') return TAMANHO_PADRAO.evento
   if (TIPOS_GATEWAY.has(tipo)) return TAMANHO_PADRAO.gateway
-  if (tipo === 'intermediateCatchEvent' || tipo === 'intermediateThrowEvent' || tipo === 'boundaryEvent') {
+  if (
+    tipo === 'intermediateCatchEvent' ||
+    tipo === 'intermediateThrowEvent' ||
+    tipo === 'boundaryEvent'
+  ) {
     return TAMANHO_PADRAO.evento
   }
   return TAMANHO_PADRAO.atividade
 }
 
-function lerBounds(shape: Element | undefined): { x: number; y: number; largura: number; altura: number } | null {
+function lerBounds(
+  shape: Element | undefined,
+): { x: number; y: number; largura: number; altura: number } | null {
   if (!shape) return null
   const bounds = primeiroElemento(shape, 'Bounds')
   if (!bounds) return null
@@ -148,7 +157,14 @@ function lerBounds(shape: Element | undefined): { x: number; y: number; largura:
   }
 }
 
-function gravarBounds(doc: Document, shape: Element, x: number, y: number, largura: number, altura: number) {
+function gravarBounds(
+  doc: Document,
+  shape: Element,
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+) {
   let bounds = primeiroElemento(shape, 'Bounds')
   if (!bounds) {
     bounds = criarElemento(doc, NS.dc, 'dc:Bounds')
@@ -160,53 +176,174 @@ function gravarBounds(doc: Document, shape: Element, x: number, y: number, largu
   bounds.setAttribute('height', String(Math.round(altura)))
 }
 
-/** Camadas (colunas) do fluxo: maior caminho a partir das origens, com fallback para ciclos. */
-function calcularNiveis(nos: NoDiagrama[], conexoes: Conexao[]): void {
+/**
+ * Extrai chave numérica do rótulo da tarefa (ex.: "1. Protocolar" -> [1], "2.1 Complementar" -> [2, 1])
+ * para auxiliar na desambiguação de ciclos (ex.: 2.1 retornando para 2).
+ */
+function extrairOrdemNumerica(nome: string): number[] | null {
+  const match = nome.trim().match(/^(\d+(?:\.\d+)*)\b/)
+  if (!match) return null
+  return match[1].split('.').map((parte) => Number(parte))
+}
+
+/**
+ * Identifica arestas de retorno (back-edges / loops de retrabalho) via DFS a partir
+ * dos eventos de início, garantindo que ciclos (ex.: 2.1 -> 2) NUNCA empurrem a
+ * etapa anterior para a direita do gateway ou da etapa de retrabalho.
+ */
+function detectarBackEdges(nos: NoDiagrama[], conexoes: Conexao[]): Set<string> {
   const porId = new Map(nos.map((no) => [no.id, no]))
-  const saidas = new Map<string, string[]>()
-  const entradas = new Map<string, number>()
+  const adj = new Map<string, Conexao[]>()
+  for (const no of nos) adj.set(no.id, [])
+  for (const c of conexoes) {
+    if (porId.has(c.origem) && porId.has(c.destino)) {
+      adj.get(c.origem)?.push(c)
+    }
+  }
+
+  // Prioriza na DFS os ramos principais antes de sub-ramos (ex: 2 antes de 2.1)
+  for (const lista of adj.values()) {
+    lista.sort((a, b) => {
+      const noA = porId.get(a.destino)
+      const noB = porId.get(b.destino)
+      return (noA?.indiceOriginal ?? 0) - (noB?.indiceOriginal ?? 0)
+    })
+  }
+
+  const estadoVisita = new Map<string, number>() // 0 = não visitado, 1 = na pilha, 2 = finalizado
+  const ordemDescoberta = new Map<string, number>()
+  let relogio = 0
+  const backEdges = new Set<string>()
+
+  const visitar = (u: string) => {
+    estadoVisita.set(u, 1)
+    ordemDescoberta.set(u, relogio++)
+    const noOrigem = porId.get(u)
+    const numOrigem = noOrigem ? extrairOrdemNumerica(noOrigem.nome) : null
+
+    for (const conexao of adj.get(u) ?? []) {
+      const v = conexao.destino
+      const st = estadoVisita.get(v) ?? 0
+      const noDestino = porId.get(v)
+      const numDestino = noDestino ? extrairOrdemNumerica(noDestino.nome) : null
+
+      // Se v já está na pilha de recursão, é um ciclo direto (back-edge)
+      if (st === 1) {
+        backEdges.add(conexao.id)
+        continue
+      }
+
+      // Se a tarefa de origem é uma sub-etapa (ex: 2.1) ou etapa posterior voltando para etapa anterior (ex: 2.1 -> 2 ou 4 -> 2)
+      if (
+        numOrigem &&
+        numDestino &&
+        numOrigem[0] !== undefined &&
+        numDestino[0] !== undefined &&
+        (numOrigem[0] > numDestino[0] ||
+          (numOrigem[0] === numDestino[0] && numOrigem.length > numDestino.length))
+      ) {
+        backEdges.add(conexao.id)
+        continue
+      }
+
+      if (st === 0) {
+        visitar(v)
+      }
+    }
+    estadoVisita.set(u, 2)
+  }
+
+  // Inicia pelos startEvents e depois pelos demais nós na ordem original
+  const raizes = [
+    ...nos.filter((n) => n.tipo === 'startEvent'),
+    ...nos.filter((n) => n.tipo !== 'startEvent'),
+  ]
+  for (const no of raizes) {
+    if ((estadoVisita.get(no.id) ?? 0) === 0) {
+      visitar(no.id)
+    }
+  }
+
+  return backEdges
+}
+
+/**
+ * Calcula a coluna (nível) estritamente da esquerda para a direita sobre o DAG
+ * (ignorando back-edges) e evita colisões de múltiplos nós na mesma raia e mesma coluna.
+ */
+function calcularNiveis(nos: NoDiagrama[], conexoes: Conexao[], backEdges: Set<string>): void {
+  const porId = new Map(nos.map((no) => [no.id, no]))
+  const dagSaidas = new Map<string, string[]>()
+  const dagEntradas = new Map<string, string[]>()
 
   for (const no of nos) {
-    saidas.set(no.id, [])
-    entradas.set(no.id, 0)
-  }
-  for (const conexao of conexoes) {
-    if (!porId.has(conexao.origem) || !porId.has(conexao.destino)) continue
-    saidas.get(conexao.origem)?.push(conexao.destino)
-    entradas.set(conexao.destino, (entradas.get(conexao.destino) ?? 0) + 1)
+    dagSaidas.set(no.id, [])
+    dagEntradas.set(no.id, [])
+    no.nivel = 0
   }
 
-  for (const no of nos) no.nivel = 0
+  for (const c of conexoes) {
+    if (backEdges.has(c.id)) continue
+    if (!porId.has(c.origem) || !porId.has(c.destino)) continue
+    dagSaidas.get(c.origem)?.push(c.destino)
+    dagEntradas.get(c.destino)?.push(c.origem)
+  }
 
-  const fila = nos.filter((no) => (entradas.get(no.id) ?? 0) === 0).map((no) => no.id)
-  const visitados = new Set<string>()
-  let iteracoes = 0
-  const limite = nos.length * 4 + 10
+  // Ordenação topológica de Kahn sobre o DAG
+  const grauEntrada = new Map<string, number>()
+  for (const no of nos) {
+    grauEntrada.set(no.id, dagEntradas.get(no.id)?.length ?? 0)
+  }
 
-  while (fila.length > 0 && iteracoes < limite) {
-    iteracoes += 1
-    const atual = fila.shift() as string
-    visitados.add(atual)
-    const nivelAtual = porId.get(atual)?.nivel ?? 0
-    for (const destino of saidas.get(atual) ?? []) {
-      const alvo = porId.get(destino)
-      if (!alvo) continue
-      if (alvo.nivel <= nivelAtual) {
-        alvo.nivel = nivelAtual + 1
-        if (!visitados.has(destino)) fila.push(destino)
-      } else if (!visitados.has(destino)) {
-        fila.push(destino)
+  const fila: string[] = nos
+    .filter((no) => (grauEntrada.get(no.id) ?? 0) === 0)
+    .sort((a, b) => a.indiceOriginal - b.indiceOriginal)
+    .map((no) => no.id)
+
+  const ordemTopo: string[] = []
+  while (fila.length > 0) {
+    const u = fila.shift() as string
+    ordemTopo.push(u)
+    for (const v of dagSaidas.get(u) ?? []) {
+      const novoGrau = (grauEntrada.get(v) ?? 1) - 1
+      grauEntrada.set(v, novoGrau)
+      if (novoGrau === 0) {
+        fila.push(v)
       }
     }
   }
 
-  // Nós em ciclos/fechados ficam após o maior nível alcançado dos seus predecessores.
   for (const no of nos) {
-    if (visitados.has(no.id)) continue
-    const predecessores = conexoes
-      .filter((conexao) => conexao.destino === no.id)
-      .map((conexao) => porId.get(conexao.origem)?.nivel ?? 0)
-    no.nivel = predecessores.length > 0 ? Math.max(...predecessores) + 1 : 0
+    if (!ordemTopo.includes(no.id)) {
+      ordemTopo.push(no.id)
+    }
+  }
+
+  // Alocação de colunas sem permitir dois elementos na mesma (raia, coluna)
+  const colunasOcupadasPorRaia = new Map<string, Set<number>>()
+  for (const id of ordemTopo) {
+    const no = porId.get(id)
+    if (!no) continue
+    const pais = dagEntradas.get(id) ?? []
+    let colMin = 0
+    for (const paiId of pais) {
+      const pai = porId.get(paiId)
+      if (pai) {
+        colMin = Math.max(colMin, pai.nivel + 1)
+      }
+    }
+
+    const chaveRaia = no.laneId ?? '__sem_lane__'
+    if (!colunasOcupadasPorRaia.has(chaveRaia)) {
+      colunasOcupadasPorRaia.set(chaveRaia, new Set())
+    }
+    const ocupadas = colunasOcupadasPorRaia.get(chaveRaia)!
+    let col = colMin
+    while (ocupadas.has(col)) {
+      col += 1
+    }
+    ocupadas.add(col)
+    no.nivel = col
   }
 }
 
@@ -226,326 +363,297 @@ function mapaFlowNodesPorLane(doc: Document): Map<string, string | null> {
   return vinculos
 }
 
-/**
- * Move o rótulo junto com a forma, mantendo a posição relativa original
- * (rótulo interno de tarefa continua interno; rótulo externo continua externo).
- */
-function moverRotulo(
-  doc: Document,
-  shapesPorId: Map<string, Element>,
-  id: string,
-  anterior: Caixa | null,
-  novo: { x: number; y: number },
-) {
-  if (!anterior) return
-  const rotulo = shapesPorId.get(`${id}_label`)
-  const caixa = lerBounds(rotulo)
-  if (!rotulo || !caixa) return
-  gravarBounds(
-    doc,
-    rotulo,
-    caixa.x + (novo.x - anterior.x),
-    caixa.y + (novo.y - anterior.y),
-    caixa.largura,
-    caixa.altura,
-  )
-}
-
 interface Ponto {
   x: number
   y: number
 }
 
-interface Obstaculo extends Caixa {
-  id: string
+function centroX(no: NoDiagrama): number {
+  return Math.round(no.x + no.largura / 2)
 }
 
-interface ContextoRoteamento {
-  obstaculos: Obstaculo[]
-  xs: number[]
-  ys: number[]
+function centroY(no: NoDiagrama): number {
+  return Math.round(no.y + no.altura / 2)
 }
 
-/** Margem aplicada às formas para o roteador manter distância visual. */
-const FOLGA_OBSTACULO = 10
-const CUSTO_CURVA = 24
-
-function unicos(valores: number[]): number[] {
-  return [...new Set(valores.map((valor) => Math.round(valor)))].sort((a, b) => a - b)
-}
-
-/** Segmento horizontal/vertical cruzando o interior do retângulo? */
+/** Segmento horizontal/vertical cruzando o interior estrito do retângulo? */
 function segmentoCruza(p1: Ponto, p2: Ponto, caixa: Caixa): boolean {
   const minX = Math.min(p1.x, p2.x)
   const maxX = Math.max(p1.x, p2.x)
   const minY = Math.min(p1.y, p2.y)
   const maxY = Math.max(p1.y, p2.y)
   return (
-    maxX > caixa.x &&
-    minX < caixa.x + caixa.largura &&
-    maxY > caixa.y &&
-    minY < caixa.y + caixa.altura
+    maxX > caixa.x + 2 &&
+    minX < caixa.x + caixa.largura - 2 &&
+    maxY > caixa.y + 2 &&
+    minY < caixa.y + caixa.altura - 2
   )
 }
 
-function rotaBloqueada(pontos: Ponto[], obstaculos: Obstaculo[]): boolean {
-  for (let i = 0; i < pontos.length - 1; i += 1) {
-    for (const obstaculo of obstaculos) {
-      if (segmentoCruza(pontos[i], pontos[i + 1], obstaculo)) return true
-    }
-  }
-  return false
-}
-
-function centroY(no: NoDiagrama): number {
-  return no.y + no.altura / 2
-}
-
-/**
- * Grade de roteamento: corredores livres entre colunas (x) e entre linhas (y),
- * derivados das métricas do próprio layout.
- */
-function construirContextoRoteamento(nos: NoDiagrama[]): ContextoRoteamento {
-  const obstaculos = nos.map((no) => ({
-    id: no.id,
-    x: no.x - FOLGA_OBSTACULO,
-    y: no.y - FOLGA_OBSTACULO,
-    largura: no.largura + FOLGA_OBSTACULO * 2,
-    altura: no.altura + FOLGA_OBSTACULO * 2,
-  }))
-
-  const xs: number[] = []
-  const ys: number[] = []
-  for (const no of nos) {
-    xs.push(no.x - METRICA.espacoHorizontal / 2)
-    xs.push(no.x + no.largura + METRICA.espacoHorizontal / 2)
-    ys.push(centroY(no))
-    ys.push(no.y - METRICA.espacoVertical / 2)
-    ys.push(no.y + no.altura + METRICA.espacoVertical / 2)
-  }
-
-  return { obstaculos, xs: unicos(xs), ys: unicos(ys) }
-}
-
-/** Rota direta: linha reta ou cotovelo simples no meio do caminho. */
-function rotaDireta(inicio: Ponto, fim: Ponto): Ponto[] {
-  if (Math.abs(inicio.y - fim.y) < 1) return [inicio, fim]
-  const xMeio = Math.round((inicio.x + fim.x) / 2)
-  return [inicio, { x: xMeio, y: inicio.y }, { x: xMeio, y: fim.y }, fim]
-}
-
-/**
- * Menor caminho ortogonal que não atravessa nenhuma forma.
- * Retorna `null` quando não há caminho na grade.
- */
-function rotearConexao(
-  inicio: Ponto,
-  fim: Ponto,
-  obstaculos: Obstaculo[],
-  contexto: ContextoRoteamento,
-): Ponto[] | null {
-  const xs = unicos([...contexto.xs, inicio.x, fim.x])
-  const ys = unicos([...contexto.ys, inicio.y, fim.y])
-  if (xs.length * ys.length > 6000) return null
-
-  const posX = new Map(xs.map((x, i) => [x, i]))
-  const posY = new Map(ys.map((y, j) => [y, j]))
-  const iInicio = posX.get(Math.round(inicio.x))
-  const jInicio = posY.get(Math.round(inicio.y))
-  const iFim = posX.get(Math.round(fim.x))
-  const jFim = posY.get(Math.round(fim.y))
-  if (iInicio === undefined || jInicio === undefined || iFim === undefined || jFim === undefined) {
-    return null
-  }
-
-  // Estados: (i, j, direção) — direção 0 = inicial, 1 = horizontal, 2 = vertical.
-  const ny = ys.length
-  const totalEstados = xs.length * ny * 3
-  const distancias = new Float64Array(totalEstados).fill(Number.POSITIVE_INFINITY)
-  const anteriores = new Int32Array(totalEstados).fill(-1)
-  const estado = (i: number, j: number, dir: number) => (i * ny + j) * 3 + dir
-
-  type No = { custo: number; id: number }
-  const fila: No[] = []
-  const empurrar = (item: No) => {
-    fila.push(item)
-    let posicao = fila.length - 1
-    while (posicao > 0) {
-      const pai = (posicao - 1) >> 1
-      if (fila[pai].custo <= fila[posicao].custo) break
-      ;[fila[pai], fila[posicao]] = [fila[posicao], fila[pai]]
-      posicao = pai
-    }
-  }
-  const retirar = (): No | undefined => {
-    if (fila.length === 0) return undefined
-    const topo = fila[0]
-    const ultimo = fila.pop() as No
-    if (fila.length > 0) {
-      fila[0] = ultimo
-      let posicao = 0
-      for (;;) {
-        const esquerda = posicao * 2 + 1
-        const direita = esquerda + 1
-        let menor = posicao
-        if (esquerda < fila.length && fila[esquerda].custo < fila[menor].custo) menor = esquerda
-        if (direita < fila.length && fila[direita].custo < fila[menor].custo) menor = direita
-        if (menor === posicao) break
-        ;[fila[menor], fila[posicao]] = [fila[posicao], fila[menor]]
-        posicao = menor
-      }
-    }
-    return topo
-  }
-
-  const inicial = estado(iInicio, jInicio, 0)
-  distancias[inicial] = 0
-  empurrar({ custo: 0, id: inicial })
-
-  const alvo = estado(iFim, jFim, 0)
-  const alvosValidos = new Set([alvo, alvo + 1, alvo + 2])
-  let final: number | null = null
-
-  while (fila.length > 0) {
-    const atual = retirar() as No
-    if (atual.custo > distancias[atual.id]) continue
-    if (alvosValidos.has(atual.id)) {
-      final = atual.id
-      break
-    }
-
-    const dir = atual.id % 3
-    const base = Math.floor(atual.id / 3)
-    const i = Math.floor(base / ny)
-    const j = base % ny
-    const ponto: Ponto = { x: xs[i], y: ys[j] }
-
-    const vizinhos: Array<{ i: number; j: number; dir: number; peso: number }> = []
-    if (i + 1 < xs.length) {
-      vizinhos.push({ i: i + 1, j, dir: 1, peso: xs[i + 1] - xs[i] + (dir === 2 ? CUSTO_CURVA : 0) })
-    }
-    if (i - 1 >= 0) {
-      vizinhos.push({ i: i - 1, j, dir: 1, peso: xs[i] - xs[i - 1] + (dir === 2 ? CUSTO_CURVA : 0) })
-    }
-    if (j + 1 < ny) {
-      vizinhos.push({ i, j: j + 1, dir: 2, peso: ys[j + 1] - ys[j] + (dir === 1 ? CUSTO_CURVA : 0) })
-    }
-    if (j - 1 >= 0) {
-      vizinhos.push({ i, j: j - 1, dir: 2, peso: ys[j] - ys[j - 1] + (dir === 1 ? CUSTO_CURVA : 0) })
-    }
-
-    for (const vizinho of vizinhos) {
-      const destinoPonto: Ponto = { x: xs[vizinho.i], y: ys[vizinho.j] }
-      if (obstaculos.some((obstaculo) => segmentoCruza(ponto, destinoPonto, obstaculo))) continue
-
-      const proximo = estado(vizinho.i, vizinho.j, vizinho.dir)
-      const custo = atual.custo + vizinho.peso
-      if (custo < distancias[proximo]) {
-        distancias[proximo] = custo
-        anteriores[proximo] = atual.id
-        empurrar({ custo, id: proximo })
-      }
-    }
-  }
-
-  if (final === null) return null
-
-  const caminho: Ponto[] = []
-  let atual: number = final
-  while (atual !== -1) {
-    const base = Math.floor(atual / 3)
-    const i = Math.floor(base / ny)
-    const j = base % ny
-    caminho.push({ x: xs[i], y: ys[j] })
-    atual = anteriores[atual]
-  }
-  caminho.reverse()
-
-  // Remove pontos colineares consecutivos.
+/** Remove pontos duplicados ou colineares consecutivos. */
+function simplificarPontos(pontos: Ponto[]): Ponto[] {
   const simplificado: Ponto[] = []
-  for (const ponto of caminho) {
+  for (const p of pontos) {
+    const pRound = { x: Math.round(p.x), y: Math.round(p.y) }
     const ultimo = simplificado[simplificado.length - 1]
     const penultimo = simplificado[simplificado.length - 2]
-    if (ultimo && ultimo.x === ponto.x && ultimo.y === ponto.y) continue
+    if (ultimo && ultimo.x === pRound.x && ultimo.y === pRound.y) continue
     if (ultimo && penultimo) {
       const mesmaLinha =
-        (penultimo.x === ultimo.x && ultimo.x === ponto.x) ||
-        (penultimo.y === ultimo.y && ultimo.y === ponto.y)
+        (penultimo.x === ultimo.x && ultimo.x === pRound.x) ||
+        (penultimo.y === ultimo.y && ultimo.y === pRound.y)
       if (mesmaLinha) {
-        simplificado[simplificado.length - 1] = ponto
+        simplificado[simplificado.length - 1] = pRound
         continue
       }
     }
-    simplificado.push(ponto)
+    simplificado.push(pRound)
   }
-
-  return simplificado.length >= 2 ? simplificado : null
+  return simplificado
 }
 
+/**
+ * Calcula waypoints ortogonais limpos para uma conexão:
+ * - Nunca usa as linhas divisórias das raias (`faixa.y` / `faixa.y + altura`) como corredor;
+ * - Usa as portas superior/inferior dos Gateways para desvios entre raias;
+ * - Faz o retorno de ciclos (back-edges) pelos corredores internos livres das raias;
+ * - Desloca canais verticais entre si para que linhas diferentes nunca se sobreponham.
+ */
 function criarWaypoints(
   doc: Document,
   edge: Element,
+  conexao: Conexao,
   origem: NoDiagrama,
   destino: NoDiagrama,
-  contexto: ContextoRoteamento,
+  todosNos: NoDiagrama[],
+  faixas: Map<string, { y: number; altura: number }>,
+  isBackEdge: boolean,
+  indiceCanal: number,
 ) {
   for (const antigo of elementos(edge, 'waypoint')) {
     antigo.remove()
   }
 
-  const avanca = destino.x > origem.x
-  const inicio: Ponto = { x: origem.x + origem.largura, y: centroY(origem) }
-  const fim: Ponto = avanca
-    ? { x: destino.x, y: centroY(destino) }
-    : { x: destino.x + destino.largura, y: centroY(destino) }
+  const mesmaRaia = (origem.laneId ?? '') === (destino.laneId ?? '')
+  const faixaOrigem = faixas.get(origem.laneId ?? '__sem_lane__')
+  const faixaDestino = faixas.get(destino.laneId ?? '__sem_lane__')
+  const offsetCanal = ((indiceCanal % 3) - 1) * 12 // -12, 0, +12 para separar linhas paralelas
 
-  // A própria origem/destino só bloqueia o interior — a rota pode sair/entrar pelas bordas.
-  const encolhido = FOLGA_OBSTACULO + 1
-  const obstaculos = contexto.obstaculos.map((obstaculo) =>
-    obstaculo.id === origem.id || obstaculo.id === destino.id
-      ? {
-          id: obstaculo.id,
-          x: obstaculo.x + encolhido,
-          y: obstaculo.y + encolhido,
-          largura: obstaculo.largura - encolhido * 2,
-          altura: obstaculo.altura - encolhido * 2,
-        }
-      : obstaculo,
-  )
+  let pontos: Ponto[] = []
 
-  let pontos = rotaDireta(inicio, fim)
-  if (rotaBloqueada(pontos, obstaculos)) {
-    pontos = rotearConexao(inicio, fim, obstaculos, contexto) ?? pontos
+  if (isBackEdge || destino.x <= origem.x) {
+    // RETORNO DE CICLO / RETRABALHO (ex.: 2.1 Complementar -> 2. Realizar triagem)
+    // Usa o corredor interno da raia (22px longe da linha divisória da raia)
+    const destinoAcima = centroY(destino) < centroY(origem)
+    const destinoAbaixo = centroY(destino) > centroY(origem)
+
+    if (mesmaRaia && faixaOrigem) {
+      // Mesma raia: sai pelo topo, passa pelo corredor superior interno da raia e entra pelo topo do destino
+      const yCorredor = faixaOrigem.y + METRICA.corredorInternoRaia + (indiceCanal % 2) * 8
+      pontos = [
+        { x: centroX(origem), y: origem.y },
+        { x: centroX(origem), y: yCorredor },
+        { x: centroX(destino), y: yCorredor },
+        { x: centroX(destino), y: destino.y },
+      ]
+    } else if (destinoAbaixo && faixaDestino) {
+      // Origem está em raia acima do destino (ex: Requerente na Raia 1 devolvendo para Protocolo na Raia 2):
+      // Sai pela direita (ou base) da origem, desce até o corredor superior interno da raia do destino e entra pelo topo do destino
+      const yCorredor = faixaDestino.y + METRICA.corredorInternoRaia + (indiceCanal % 2) * 8
+      const xSaida = origem.x + origem.largura + 24 + offsetCanal
+      // Verifica se podemos descer direto pela base da origem sem cruzar ninguém
+      const baseX = centroX(origem)
+      const cruzaDescidaDireta = todosNos.some(
+        (n) =>
+          n.id !== origem.id &&
+          n.id !== destino.id &&
+          segmentoCruza(
+            { x: baseX, y: origem.y + origem.altura },
+            { x: baseX, y: yCorredor },
+            n,
+          ),
+      )
+      if (!cruzaDescidaDireta && baseX > destino.x + destino.largura + 10) {
+        pontos = [
+          { x: baseX, y: origem.y + origem.altura },
+          { x: baseX, y: yCorredor },
+          { x: centroX(destino), y: yCorredor },
+          { x: centroX(destino), y: destino.y },
+        ]
+      } else {
+        pontos = [
+          { x: origem.x + origem.largura, y: centroY(origem) },
+          { x: xSaida, y: centroY(origem) },
+          { x: xSaida, y: yCorredor },
+          { x: centroX(destino), y: yCorredor },
+          { x: centroX(destino), y: destino.y },
+        ]
+      }
+    } else if (destinoAcima && faixaDestino) {
+      // Origem está em raia abaixo do destino: sobe até o corredor inferior interno da raia do destino e entra pela base do destino
+      const yCorredor =
+        faixaDestino.y + faixaDestino.altura - METRICA.corredorInternoRaia - (indiceCanal % 2) * 8
+      const topoX = centroX(origem)
+      pontos = [
+        { x: topoX, y: origem.y },
+        { x: topoX, y: yCorredor },
+        { x: centroX(destino), y: yCorredor },
+        { x: centroX(destino), y: destino.y + destino.altura },
+      ]
+    } else {
+      const yCorredor = Math.min(origem.y, destino.y) - 24
+      pontos = [
+        { x: centroX(origem), y: origem.y },
+        { x: centroX(origem), y: yCorredor },
+        { x: centroX(destino), y: yCorredor },
+        { x: centroX(destino), y: destino.y },
+      ]
+    }
+  } else if (TIPOS_GATEWAY.has(origem.tipo) && !mesmaRaia) {
+    // SAÍDA DE GATEWAY PARA OUTRA RAIA:
+    // Sai pelo vértice SUPERIOR (se destino está acima) ou INFERIOR (se destino está abaixo) do losango!
+    const vaiParaCima = centroY(destino) < centroY(origem)
+    const pInicio: Ponto = vaiParaCima
+      ? { x: centroX(origem), y: origem.y }
+      : { x: centroX(origem), y: origem.y + origem.altura }
+    const pFim: Ponto = { x: destino.x, y: centroY(destino) }
+
+    // Verifica se o trecho horizontal em y = pFim.y de x = pInicio.x até pFim.x cruza algum nó na raia destino
+    const obstaculoNoCaminho = todosNos.some(
+      (n) =>
+        n.id !== origem.id &&
+        n.id !== destino.id &&
+        segmentoCruza({ x: pInicio.x, y: pFim.y }, pFim, n),
+    )
+
+    if (!obstaculoNoCaminho) {
+      pontos = [pInicio, { x: pInicio.x, y: pFim.y }, pFim]
+    } else {
+      // Contorna pelo corredor interno da raia destino e desce/sobe antes da tarefa destino
+      const yCorredor = faixaDestino
+        ? vaiParaCima
+          ? faixaDestino.y + faixaDestino.altura - METRICA.corredorInternoRaia
+          : faixaDestino.y + METRICA.corredorInternoRaia
+        : pFim.y - 28
+      const xEntrada = destino.x - 24 + offsetCanal
+      pontos = [
+        pInicio,
+        { x: pInicio.x, y: yCorredor },
+        { x: xEntrada, y: yCorredor },
+        { x: xEntrada, y: pFim.y },
+        pFim,
+      ]
+    }
+  } else if (mesmaRaia) {
+    // MESMA RAIA AVANÇANDO PARA A DIREITA
+    const pInicio: Ponto = { x: origem.x + origem.largura, y: centroY(origem) }
+    const pFim: Ponto = { x: destino.x, y: centroY(destino) }
+
+    const obstaculoMesmaRaia = todosNos.some(
+      (n) =>
+        n.id !== origem.id &&
+        n.id !== destino.id &&
+        segmentoCruza(pInicio, pFim, n),
+    )
+
+    if (!obstaculoMesmaRaia) {
+      if (Math.abs(pInicio.y - pFim.y) <= 2) {
+        pontos = [pInicio, { x: pFim.x, y: pInicio.y }]
+      } else {
+        const xMeio = Math.round((pInicio.x + pFim.x) / 2) + offsetCanal
+        pontos = [pInicio, { x: xMeio, y: pInicio.y }, { x: xMeio, y: pFim.y }, pFim]
+      }
+    } else {
+      // Se salta sobre outro elemento na mesma raia, passa pelo corredor inferior interno da raia
+      const yCorredor = faixaOrigem
+        ? faixaOrigem.y + faixaOrigem.altura - METRICA.corredorInternoRaia
+        : Math.max(origem.y + origem.altura, destino.y + destino.altura) + 22
+      const xSaida = pInicio.x + 20
+      const xEntrada = pFim.x - 20
+      pontos = [
+        pInicio,
+        { x: xSaida, y: pInicio.y },
+        { x: xSaida, y: yCorredor },
+        { x: xEntrada, y: yCorredor },
+        { x: xEntrada, y: pFim.y },
+        pFim,
+      ]
+    }
+  } else {
+    // ENTRE RAIAS DIFERENTES (TAREFA -> TAREFA) AVANÇANDO PARA A DIREITA
+    const pInicio: Ponto = { x: origem.x + origem.largura, y: centroY(origem) }
+    const pFim: Ponto = { x: destino.x, y: centroY(destino) }
+    const xCanalPadrao = pInicio.x + 32 + offsetCanal
+    const xCanal = Math.min(Math.max(pInicio.x + 18, xCanalPadrao), pFim.x - 18)
+
+    const rotaCotovelo: Ponto[] = [
+      pInicio,
+      { x: xCanal, y: pInicio.y },
+      { x: xCanal, y: pFim.y },
+      pFim,
+    ]
+
+    const cruzaObstaculo = todosNos.some(
+      (n) =>
+        n.id !== origem.id &&
+        n.id !== destino.id &&
+        (segmentoCruza(rotaCotovelo[1], rotaCotovelo[2], n) ||
+          segmentoCruza(rotaCotovelo[2], rotaCotovelo[3], n)),
+    )
+
+    if (!cruzaObstaculo) {
+      pontos = rotaCotovelo
+    } else {
+      // Usa o canal imediatamente antes da coluna de destino
+      const xAntesDestino = pFim.x - 26 + offsetCanal
+      pontos = [
+        pInicio,
+        { x: xAntesDestino, y: pInicio.y },
+        { x: xAntesDestino, y: pFim.y },
+        pFim,
+      ]
+    }
   }
 
-  for (const ponto of pontos) {
+  const pontosLimpos = simplificarPontos(pontos)
+
+  for (const ponto of pontosLimpos) {
     const waypoint = criarElemento(doc, NS.di, 'di:waypoint')
-    waypoint.setAttribute('x', String(Math.round(ponto.x)))
-    waypoint.setAttribute('y', String(Math.round(ponto.y)))
-    // Waypoints precisam vir antes de `BPMNLabel` no DI da conexão.
-    const referencia = Array.from(edge.children ?? []).find((filho) => nomeLocal(filho) !== 'waypoint')
+    waypoint.setAttribute('x', String(ponto.x))
+    waypoint.setAttribute('y', String(ponto.y))
+    const referencia = Array.from(edge.children ?? []).find(
+      (filho) => nomeLocal(filho) !== 'waypoint',
+    )
     edge.insertBefore(waypoint, referencia ?? null)
   }
 
-  // Rótulo da conexão: mantém sobre o trecho central do novo caminho.
-  const rotulo = primeiroElemento(edge, 'BPMNLabel')
-  const caixaRotulo = lerBounds(rotulo)
-  if (rotulo && caixaRotulo) {
-    const meio = pontos[Math.floor(pontos.length / 2)]
-    gravarBounds(
-      doc,
-      rotulo,
-      meio.x - caixaRotulo.largura / 2,
-      meio.y - caixaRotulo.altura - 6,
-      caixaRotulo.largura,
-      caixaRotulo.altura,
-    )
+  // Posiciona o rótulo da condição (ex.: "Sim", "Não") próximo à saída do gateway,
+  // fora do traço da linha e longe das divisórias das raias.
+  let rotulo = primeiroElemento(edge, 'BPMNLabel')
+  if (conexao.nome.trim()) {
+    if (!rotulo) {
+      rotulo = criarElemento(doc, NS.bpmndi, 'bpmndi:BPMNLabel')
+      edge.appendChild(rotulo)
+    }
+    const p0 = pontosLimpos[0]
+    const p1 = pontosLimpos[1] ?? p0
+    const vertical = Math.abs(p1.y - p0.y) > Math.abs(p1.x - p0.x)
+    const larguraLabel = Math.min(130, Math.max(44, conexao.nome.trim().length * 6.5))
+    const alturaLabel = 24
+    const labelX = vertical ? p0.x + 8 : p0.x + 12
+    const labelY = vertical
+      ? p1.y < p0.y
+        ? p0.y - 30
+        : p0.y + 8
+      : p0.y - alturaLabel - 4
+    gravarBounds(doc, rotulo, labelX, labelY, larguraLabel, alturaLabel)
   }
 }
 
 /**
- * Reorganiza o diagrama: fluxo principal da esquerda para a direita, uma faixa
- * por lane, colunas por profundidade e conexões ortogonais.
+ * Reorganiza o diagrama: fluxo principal estritamente da esquerda para a direita,
+ * uma faixa por lane, colunas por profundidade DAG (sem inversão por ciclos)
+ * e conexões ortogonais sem tocar nas linhas divisórias das raias.
  */
 export function organizarDiagrama(xml: string): string {
   if (typeof DOMParser === 'undefined') return xml
@@ -570,16 +678,18 @@ export function organizarDiagrama(xml: string): string {
     const tipo = nomeLocal(elemento)
     if (!TIPOS_NO.has(tipo)) continue
     const id = elemento.getAttribute('id') ?? ''
+    const nome = elemento.getAttribute('name') ?? ''
     const shape = shapesPorId.get(id)
     const bounds = lerBounds(shape)
-    if (!bounds) continue
+    const padrao = dimensoesPadrao(tipo)
     nos.push({
       id,
+      nome,
       tipo,
-      largura: bounds.largura || dimensoesPadrao(tipo).largura,
-      altura: bounds.altura || dimensoesPadrao(tipo).altura,
-      x: bounds.x,
-      y: bounds.y,
+      largura: TIPOS_GATEWAY.has(tipo) || tipo.endsWith('Event') ? padrao.largura : Math.max(bounds?.largura ?? 0, padrao.largura),
+      altura: TIPOS_GATEWAY.has(tipo) || tipo.endsWith('Event') ? padrao.altura : Math.max(bounds?.altura ?? 0, padrao.altura),
+      x: bounds?.x ?? 0,
+      y: bounds?.y ?? 0,
       laneId: vinculosLane.get(id) ?? null,
       indiceOriginal: indice++,
       nivel: 0,
@@ -588,19 +698,22 @@ export function organizarDiagrama(xml: string): string {
 
   if (nos.length === 0) return xml
 
-  const conexoes: Conexao[] = elementos(doc, 'sequenceFlow').map(
-    (fluxo) => ({
-      id: fluxo.getAttribute('id') ?? '',
-      origem: fluxo.getAttribute('sourceRef') ?? '',
-      destino: fluxo.getAttribute('targetRef') ?? '',
-    }),
-  )
+  const conexoes: Conexao[] = elementos(doc, 'sequenceFlow').map((fluxo) => ({
+    id: fluxo.getAttribute('id') ?? '',
+    origem: fluxo.getAttribute('sourceRef') ?? '',
+    destino: fluxo.getAttribute('targetRef') ?? '',
+    nome: fluxo.getAttribute('name') ?? '',
+  }))
 
-  calcularNiveis(nos, conexoes)
+  const backEdges = detectarBackEdges(nos, conexoes)
+  calcularNiveis(nos, conexoes, backEdges)
 
-  // Agrupa por lane (mantendo a ordem do XML) e ordena por nível dentro da faixa.
+  // Agrupa por lane (mantendo a ordem de todas as lanes declaradas no XML)
   const ordemLanes = ordenarLanes(doc).map((lane) => lane.getAttribute('id') ?? '')
   const grupos = new Map<string, NoDiagrama[]>()
+  for (const laneId of ordemLanes) {
+    if (laneId) grupos.set(laneId, [])
+  }
   for (const no of nos) {
     const chave = no.laneId ?? '__sem_lane__'
     if (!grupos.has(chave)) grupos.set(chave, [])
@@ -621,76 +734,77 @@ export function organizarDiagrama(xml: string): string {
     larguraPorNivel.set(nivel, Math.max(...larguras, TAMANHO_PADRAO.atividade.largura))
   }
 
-  const xPorNivel = new Map<number, number>()
-  const xInicial = METRICA.margemExterna + METRICA.insetConteudo
+  const poolX = METRICA.margemExterna
+  const laneX = poolX + METRICA.larguraHeaderPool
+  const xInicial = laneX + METRICA.insetConteudo
+
+  const xCentroPorNivel = new Map<number, number>()
   let cursorX = xInicial
   for (const nivel of niveis) {
-    xPorNivel.set(nivel, cursorX)
-    cursorX += (larguraPorNivel.get(nivel) ?? 0) + METRICA.espacoHorizontal
+    const largNivel = larguraPorNivel.get(nivel) ?? TAMANHO_PADRAO.atividade.largura
+    xCentroPorNivel.set(nivel, cursorX + Math.round(largNivel / 2))
+    cursorX += largNivel + METRICA.espacoHorizontal
   }
-  const larguraConteudo =
-    cursorX - METRICA.espacoHorizontal - xInicial + METRICA.insetConteudo
+
+  const larguraFinalConteudo = Math.max(
+    860,
+    cursorX - METRICA.espacoHorizontal + METRICA.margemDireitaPool - laneX,
+  )
+  const larguraFinalPool = larguraFinalConteudo + METRICA.larguraHeaderPool
 
   const faixas = new Map<string, { y: number; altura: number }>()
-  let cursorY = METRICA.margemExterna + METRICA.alturaTituloPool + METRICA.alturaCabecalhoLane
+  let cursorY = METRICA.margemExterna
 
   for (const chave of chaves) {
     const grupo = grupos.get(chave) ?? []
-    const ocupacao = new Map<number, number>()
-    for (const no of grupo) {
-      ocupacao.set(no.nivel, (ocupacao.get(no.nivel) ?? 0) + 1)
-    }
-    const maxPorNivel = Math.max(1, ...ocupacao.values())
-    const alturaUtil = grupo.length > 0 ? Math.max(...grupo.map((no) => no.altura)) : TAMANHO_PADRAO.atividade.altura
-    // Altura da faixa: todas as linhas empilhadas + respiro superior e inferior.
-    const alturaFaixa = Math.max(
-      alturaUtil * maxPorNivel + METRICA.espacoVertical * maxPorNivel,
-      TAMANHO_PADRAO.atividade.altura + METRICA.paddingLane,
-    )
+    const alturaUtil =
+      grupo.length > 0
+        ? Math.max(...grupo.map((no) => no.altura))
+        : TAMANHO_PADRAO.atividade.altura
+    // Garante no mínimo 180px de altura por raia para que haja folga limpa acima e abaixo das caixas
+    const alturaFaixa = Math.max(180, alturaUtil + METRICA.paddingLane)
     faixas.set(chave, { y: cursorY, altura: alturaFaixa })
     cursorY += alturaFaixa
   }
 
   for (const chave of chaves) {
-    const grupo = (grupos.get(chave) ?? []).slice().sort((a, b) => a.nivel - b.nivel || a.indiceOriginal - b.indiceOriginal)
+    const grupo = grupos.get(chave) ?? []
     const faixa = faixas.get(chave)
     if (!faixa) continue
-    const contadorPorNivel = new Map<number, number>()
+    const centroFaixaY = faixa.y + Math.round(faixa.altura / 2)
+
     for (const no of grupo) {
-      const alturaTotalNivel = Math.max(...grupo.filter((item) => item.nivel === no.nivel).map((item) => item.altura))
-      const ocorrencia = contadorPorNivel.get(no.nivel) ?? 0
-      contadorPorNivel.set(no.nivel, ocorrencia + 1)
-      no.x = xPorNivel.get(no.nivel) ?? METRICA.margemExterna
-      no.y =
-        faixa.y +
-        METRICA.espacoVertical / 2 +
-        ocorrencia * (alturaTotalNivel + METRICA.espacoVertical) +
-        (alturaTotalNivel - no.altura) / 2
+      const centroColX = xCentroPorNivel.get(no.nivel) ?? xInicial
+      no.x = Math.round(centroColX - no.largura / 2)
+      no.y = Math.round(centroFaixaY - no.altura / 2)
     }
   }
 
-  // Aplica posições e desloca os rótulos junto com suas formas.
+  // Aplica posições nas formas e posiciona rótulos externos de Eventos/Gateways abaixo da forma
   for (const no of nos) {
     const shape = shapesPorId.get(no.id)
     if (!shape) continue
-    const anterior = lerBounds(shape)
     gravarBounds(doc, shape, no.x, no.y, no.largura, no.altura)
-    moverRotulo(doc, shapesPorId, no.id, anterior, { x: no.x, y: no.y })
+
+    // Se houver BPMNLabel interno no shape de Gateway/Evento, posiciona logo abaixo sem cruzar a linha da raia
+    const labelInterno = primeiroElemento(shape, 'BPMNLabel')
+    if (labelInterno && (TIPOS_GATEWAY.has(no.tipo) || no.tipo.endsWith('Event'))) {
+      gravarBounds(doc, labelInterno, no.x - 28, no.y + no.altura + 4, no.largura + 56, 28)
+    }
   }
 
-  // Waypoints das conexões.
+  // Waypoints das conexões
   const porId = new Map(nos.map((no) => [no.id, no]))
-  const contextoRoteamento = construirContextoRoteamento(nos)
   const edgesPorId = new Map<string, Element>()
   for (const edge of elementos(doc, 'BPMNEdge')) {
     const id = edge.getAttribute('bpmnElement')
     if (id) edgesPorId.set(id, edge)
   }
 
-  for (const conexao of conexoes) {
+  conexoes.forEach((conexao, idx) => {
     const origemNo = porId.get(conexao.origem)
     const destinoNo = porId.get(conexao.destino)
-    if (!origemNo || !destinoNo) continue
+    if (!origemNo || !destinoNo) return
 
     let edge = edgesPorId.get(conexao.id)
     if (!edge) {
@@ -700,46 +814,50 @@ export function organizarDiagrama(xml: string): string {
       plano.appendChild(edge)
       edgesPorId.set(conexao.id, edge)
     }
-    criarWaypoints(doc, edge, origemNo, destinoNo, contextoRoteamento)
-  }
+    criarWaypoints(
+      doc,
+      edge,
+      conexao,
+      origemNo,
+      destinoNo,
+      nos,
+      faixas,
+      backEdges.has(conexao.id),
+      idx,
+    )
+  })
 
-  // Pools e lanes: envolvem o conteúdo reorganizado.
+  // Lanes: começam exatamente em poolX + 30 e somam a altura exata da Pool
   for (const lane of ordenarLanes(doc)) {
     const laneId = lane.getAttribute('id') ?? ''
     const faixa = faixas.get(laneId)
     const shape = shapesPorId.get(laneId)
     if (!faixa || !shape) continue
-    const caixaLane = {
-      x: METRICA.margemExterna,
-      y: faixa.y,
-      largura: larguraConteudo,
-      altura: faixa.altura,
-    }
-    const anteriorLane = lerBounds(shape)
-    gravarBounds(doc, shape, caixaLane.x, caixaLane.y, caixaLane.largura, caixaLane.altura)
-    moverRotulo(doc, shapesPorId, laneId, anteriorLane, caixaLane)
+    shape.setAttribute('isHorizontal', 'true')
+    gravarBounds(doc, shape, laneX, faixa.y, larguraFinalConteudo, faixa.altura)
+    const labelLane = primeiroElemento(shape, 'BPMNLabel')
+    if (labelLane) labelLane.remove()
   }
 
+  // Pool (participant): envolve exatamente todas as lanes de primeiraFaixa.y até a soma das alturas
   for (const participante of elementos(doc, 'participant')) {
     const id = participante.getAttribute('id') ?? ''
     const shape = shapesPorId.get(id)
     if (!shape) continue
-    const primeiro = faixas.values().next().value as { y: number; altura: number } | undefined
+    const listaFaixas = [...faixas.values()]
+    const primeiro = listaFaixas[0]
     if (!primeiro) continue
-    const alturaTotal = [...faixas.values()].reduce((total, faixa) => total + faixa.altura, 0)
-    const caixaPool = {
-      x: METRICA.margemExterna - METRICA.espacoColuna,
-      y: primeiro.y - METRICA.alturaCabecalhoLane,
-      largura: larguraConteudo + METRICA.espacoColuna * 2,
-      altura: alturaTotal + METRICA.alturaCabecalhoLane + METRICA.alturaTituloPool / 2,
-    }
-    const anteriorPool = lerBounds(shape)
-    gravarBounds(doc, shape, caixaPool.x, caixaPool.y, caixaPool.largura, caixaPool.altura)
-    moverRotulo(doc, shapesPorId, id, anteriorPool, caixaPool)
+    const alturaTotal = listaFaixas.reduce((total, faixa) => total + faixa.altura, 0)
+    shape.setAttribute('isHorizontal', 'true')
+    gravarBounds(doc, shape, poolX, primeiro.y, larguraFinalPool, alturaTotal)
+    const labelPool = primeiroElemento(shape, 'BPMNLabel')
+    if (labelPool) labelPool.remove()
   }
 
   const serializado = new XMLSerializer().serializeToString(doc)
-  return serializado.startsWith('<?xml') ? serializado : `<?xml version="1.0" encoding="UTF-8"?>\n${serializado}`
+  return serializado.startsWith('<?xml')
+    ? serializado
+    : `<?xml version="1.0" encoding="UTF-8"?>\n${serializado}`
 }
 
 /** Métricas de qualidade visual usadas na validação do layout. */
@@ -757,8 +875,12 @@ export function medirLayout(xml: string): MetricasLayout | null {
   const formas = elementos(doc, 'BPMNShape')
     .map((shape) => ({ id: shape.getAttribute('bpmnElement') ?? '', bounds: lerBounds(shape) }))
     .filter(
-      (forma): forma is { id: string; bounds: { x: number; y: number; largura: number; altura: number } } =>
-        forma.bounds !== null && !containers.has(forma.id) && !forma.id.endsWith('_label'),
+      (
+        forma,
+      ): forma is {
+        id: string
+        bounds: { x: number; y: number; largura: number; altura: number }
+      } => forma.bounds !== null && !containers.has(forma.id) && !forma.id.endsWith('_label'),
     )
 
   let sobreposicoes = 0
@@ -786,7 +908,12 @@ export function medirLayout(xml: string): MetricasLayout | null {
     })),
   )
 
-  const cruza = (p1: { x: number; y: number }, p2: { x: number; y: number }, p3: { x: number; y: number }, p4: { x: number; y: number }) => {
+  const cruza = (
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    p3: { x: number; y: number },
+    p4: { x: number; y: number },
+  ) => {
     const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x)
     if (Math.abs(d) < 1e-9) return false
     const ua = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d
@@ -806,10 +933,15 @@ export function medirLayout(xml: string): MetricasLayout | null {
   }
 
   const todos = formas.map((forma) => forma.bounds)
-  const largura = todos.length > 0 ? Math.round(Math.max(...todos.map((b) => b.x + b.largura)) - Math.min(...todos.map((b) => b.x))) : 0
-  const altura = todos.length > 0 ? Math.round(Math.max(...todos.map((b) => b.y + b.altura)) - Math.min(...todos.map((b) => b.y))) : 0
+  const largura =
+    todos.length > 0
+      ? Math.round(Math.max(...todos.map((b) => b.x + b.largura)) - Math.min(...todos.map((b) => b.x)))
+      : 0
+  const altura =
+    todos.length > 0
+      ? Math.round(Math.max(...todos.map((b) => b.y + b.altura)) - Math.min(...todos.map((b) => b.y)))
+      : 0
 
-  // Conectores que atravessam o interior de alguma forma.
   let conectoresSobreFormas = 0
   for (const aresta of edges) {
     let cruzaAlguma = false
