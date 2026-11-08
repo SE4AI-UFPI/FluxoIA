@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { usersService, type CriarUsuarioPayload } from '@/services/usersService'
+import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 
 type PerfilCadastro = CriarUsuarioPayload['papel']
 
@@ -175,6 +176,64 @@ export function UserRegistrationPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [success, setSuccess] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [usersList, setUsersList] = React.useState<Usuario[]>([])
+  const [usersLoading, setUsersLoading] = React.useState(true)
+  const [userSearch, setUserSearch] = React.useState('')
+
+  React.useEffect(() => {
+    let active = true
+    usersService
+      .list()
+      .then((data) => {
+        if (active) setUsersList(data)
+      })
+      .catch(() => {
+        // mantém lista vazia se offline
+      })
+      .finally(() => {
+        if (active) setUsersLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function handleToggleActive(target: Usuario) {
+    try {
+      const updated = await usersService.updateStatus(target.id, !target.is_active)
+      setUsersList((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+      setSuccess(
+        `Usuário ${updated.nome} ${updated.is_active ? 'ativado' : 'desativado'} com sucesso.`,
+      )
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível alterar o status do usuário.')
+    }
+  }
+
+  async function handleDeleteUser(target: Usuario) {
+    if (!window.confirm(`Deseja realmente remover o usuário ${target.nome} (${target.email})?`)) {
+      return
+    }
+    try {
+      await usersService.remove(target.id)
+      setUsersList((prev) => prev.filter((item) => item.id !== target.id))
+      setSuccess(`Usuário ${target.nome} removido com sucesso.`)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível remover o usuário.')
+    }
+  }
+
+  const filteredUsers = React.useMemo(() => {
+    const term = userSearch.trim().toLowerCase()
+    if (!term) return usersList
+    return usersList.filter((item) =>
+      `${item.nome} ${item.email} ${item.setor} ${item.secretaria} ${item.papel}`
+        .toLowerCase()
+        .includes(term),
+    )
+  }, [usersList, userSearch])
 
   function updateField<Key extends keyof FormularioUsuario>(key: Key, value: FormularioUsuario[Key]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -243,7 +302,8 @@ export function UserRegistrationPage() {
         setor: form.setor.trim(),
         password: form.password,
       }
-      await usersService.create(payload)
+      const created = await usersService.create(payload)
+      setUsersList((prev) => [created, ...prev])
       sessionStorage.removeItem(DRAFT_KEY)
       setForm(INITIAL_FORM)
       setSuccess('Usuário cadastrado com sucesso.')
@@ -466,6 +526,103 @@ export function UserRegistrationPage() {
             </CardContent>
           </Card>
         </form>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-xl">Usuários Cadastrados na Plataforma</CardTitle>
+                <CardDescription>
+                  Consulte os usuários registrados, seus perfis RBAC, setores vinculados e gerencie o status de acesso.
+                </CardDescription>
+              </div>
+              <div className="w-full sm:w-64">
+                <Input
+                  placeholder="Buscar por nome, e-mail ou setor..."
+                  value={userSearch}
+                  onChange={(event) => setUserSearch(event.target.value)}
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {usersLoading ? (
+              <p className="py-4 text-sm text-fx-cinza">Carregando usuários...</p>
+            ) : filteredUsers.length === 0 ? (
+              <p className="py-4 text-sm text-fx-cinza">Nenhum usuário encontrado.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-fx-linha text-xs font-semibold uppercase tracking-wider text-fx-cinza">
+                      <th className="py-2.5 pr-4">Usuário</th>
+                      <th className="py-2.5 px-4">Perfil</th>
+                      <th className="py-2.5 px-4">Setor / Escopo</th>
+                      <th className="py-2.5 px-4">Status</th>
+                      <th className="py-2.5 pl-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-fx-linha/70">
+                    {filteredUsers.map((item) => {
+                      const isSelf = item.id === user.id
+                      return (
+                        <tr key={item.id} className="hover:bg-fx-nevoa/20">
+                          <td className="py-3 pr-4">
+                            <p className="font-semibold text-fx-marinho">{item.nome}</p>
+                            <p className="text-xs text-fx-cinza">{item.email}</p>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant="secondary">{PAPEL_LABEL[item.papel]}</Badge>
+                          </td>
+                          <td className="py-3 px-4 text-xs text-fx-grafite">
+                            <p className="font-medium">{item.setor || item.secretaria || 'Institucional'}</p>
+                            {item.setores_vinculados && item.setores_vinculados.length > 0 && (
+                              <p className="mt-0.5 text-[11px] text-fx-cinza">
+                                Supervisiona: {item.setores_vinculados.join(', ')}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant={item.is_active ? 'success' : 'outline'}>
+                              {item.is_active ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 pl-4 text-right">
+                            {isSelf ? (
+                              <span className="text-xs text-fx-cinza">Sessão atual</span>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => void handleToggleActive(item)}
+                                >
+                                  {item.is_active ? 'Desativar' : 'Ativar'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-fx-alerta hover:text-fx-alerta"
+                                  aria-label={`Remover ${item.nome}`}
+                                  title="Remover usuário"
+                                  onClick={() => void handleDeleteUser(item)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )

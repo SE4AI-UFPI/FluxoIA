@@ -1,3 +1,4 @@
+import { apiClient } from '@/services/apiClient'
 import { tokenStorage } from '@/services/authService'
 import type { Usuario } from '@/types/auth'
 
@@ -28,6 +29,10 @@ function extractErrorMessage(data: unknown): string {
 }
 
 export const usersService = {
+  async list(): Promise<Usuario[]> {
+    return apiClient.get<Usuario[]>('/api/usuarios/')
+  },
+
   async create(payload: CriarUsuarioPayload): Promise<Usuario> {
     const access = tokenStorage.getAccess()
     if (!access) throw new Error('Sessão não autenticada.')
@@ -44,5 +49,13 @@ export const usersService = {
     const data = await response.json().catch(() => null)
     if (!response.ok) throw new Error(extractErrorMessage(data))
     return data as Usuario
+  },
+
+  async updateStatus(id: string, is_active: boolean): Promise<Usuario> {
+    return apiClient.patch<Usuario>(`/api/usuarios/${id}/`, { is_active })
+  },
+
+  async remove(id: string): Promise<void> {
+    return apiClient.delete(`/api/usuarios/${id}/`)
   },
 }
