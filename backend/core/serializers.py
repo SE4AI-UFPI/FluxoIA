@@ -163,8 +163,6 @@ class RegisterSerializer(serializers.ModelSerializer):
     papel = serializers.ChoiceField(
         choices=[
             (PapelUsuario.OPERACIONAL, 'Usuário Operacional'),
-            (PapelUsuario.COORDENADOR, 'Coordenador'),
-            (PapelUsuario.SUPERVISOR, 'Supervisor de Setor'),
         ],
         default=PapelUsuario.OPERACIONAL,
         required=False,

@@ -46,23 +46,30 @@ STATUS_EXCLUSAO_PERMITIDOS = {
 STATUS_PRE_VALIDACAO = frozenset(STATUS_EXCLUSAO_PERMITIDOS)
 
 TRANSICOES_STATUS_USUARIO = {
-    StatusProcesso.RASCUNHO: {StatusProcesso.RASCUNHO, StatusProcesso.EM_ENTREVISTA},
+    StatusProcesso.RASCUNHO: {
+        StatusProcesso.RASCUNHO,
+        StatusProcesso.EM_ENTREVISTA,
+        StatusProcesso.EM_MODELAGEM,
+    },
     StatusProcesso.EM_ENTREVISTA: {
         StatusProcesso.RASCUNHO,
         StatusProcesso.EM_ENTREVISTA,
         StatusProcesso.EM_MODELAGEM,
     },
     StatusProcesso.EM_MODELAGEM: {
+        StatusProcesso.RASCUNHO,
         StatusProcesso.EM_ENTREVISTA,
         StatusProcesso.EM_MODELAGEM,
         StatusProcesso.EM_AVALIACAO,
     },
     StatusProcesso.EM_AVALIACAO: {
+        StatusProcesso.RASCUNHO,
         StatusProcesso.EM_ENTREVISTA,
         StatusProcesso.EM_MODELAGEM,
         StatusProcesso.EM_AVALIACAO,
     },
     StatusProcesso.AJUSTES_SOLICITADOS: {
+        StatusProcesso.RASCUNHO,
         StatusProcesso.EM_ENTREVISTA,
         StatusProcesso.EM_MODELAGEM,
         StatusProcesso.EM_AVALIACAO,
@@ -325,6 +332,12 @@ def revisar_processo_governanca(
     dados_revisao: dict,
 ) -> RevisaoGovernanca:
     """Registra parecer de governança do supervisor/admin e atualiza o status do Processo."""
+    if revisor.papel not in (PapelUsuario.SUPERVISOR, PapelUsuario.ADMIN):
+        raise PermissionDenied('Apenas supervisores ou administradores podem revisar processos.')
+    if revisor.papel == PapelUsuario.SUPERVISOR:
+        setores_escopo = {s for s in [revisor.setor, *(revisor.setores_vinculados or [])] if s}
+        if setores_escopo and processo.setor not in setores_escopo:
+            raise PermissionDenied('Você só pode revisar processos pertencentes aos seus setores supervisionados.')
     if processo.status != StatusProcesso.AGUARDANDO_VALIDACAO:
         raise ValidationError({'status': 'Somente processos aguardando validação podem ser revisados.'})
 
@@ -360,6 +373,10 @@ def publicar_processo(*, processo: Processo, usuario: User, parecer: str = '') -
     """Encaminha um processo homologado para a etapa institucional de publicação."""
     if usuario.papel not in (PapelUsuario.SUPERVISOR, PapelUsuario.ADMIN):
         raise PermissionDenied('Apenas supervisores ou administradores podem publicar processos.')
+    if usuario.papel == PapelUsuario.SUPERVISOR:
+        setores_escopo = {s for s in [usuario.setor, *(usuario.setores_vinculados or [])] if s}
+        if setores_escopo and processo.setor not in setores_escopo:
+            raise PermissionDenied('Você só pode publicar processos pertencentes aos seus setores supervisionados.')
     if processo.status != StatusProcesso.APROVADO:
         raise ValidationError(
             {'status': 'Somente processos aprovados/homologados podem ser publicados.'}

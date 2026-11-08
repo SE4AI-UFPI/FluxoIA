@@ -293,17 +293,3 @@ class PerguntaEntrevistaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return PerguntaEntrevista.objects.filter(ativa=True).order_by('ordem')
-
-
-
-class PerguntaEntrevistaViewSet(viewsets.ReadOnlyModelViewSet):
-    """GET /api/perguntas-entrevista/ -> Lista de perguntas ativas da entrevista guiada."""
-
-    serializer_class = PerguntaEntrevistaSerializer
-    permission_classes = [IsAuthenticated]
-    pagination_class = None
-
-    def get_queryset(self):
-        return PerguntaEntrevista.objects.filter(ativa=True).order_by('ordem')
-
-
