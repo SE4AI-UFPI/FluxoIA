@@ -96,7 +96,7 @@ function ProcessActions({ processo }: { processo: ProcessoResumo }) {
         size="icon"
         className="h-8 w-8"
         aria-label={`Editar ${processo.nome}`}
-        title="Editar processo"
+        title="Editar ou revisar processo"
         onClick={() => navigate(`/mapear-processo${query}`)}
       >
         <PencilLine className="h-4 w-4" />
@@ -107,8 +107,8 @@ function ProcessActions({ processo }: { processo: ProcessoResumo }) {
         size="icon"
         className="h-8 w-8"
         aria-label={`Abrir diagrama de ${processo.nome}`}
-        title="Abrir diagrama BPMN"
-        onClick={() => navigate(`/mapear-processo${query}`)}
+        title="Abrir diagrama na Biblioteca BPMN"
+        onClick={() => navigate(`/bpmn${query}`)}
       >
         <Workflow className="h-4 w-4" />
       </Button>

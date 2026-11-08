@@ -1,4 +1,4 @@
-import { Download, FileCode2, FileText, Link2, ShieldCheck } from 'lucide-react'
+import { FileCode2, FileText, Link2, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
@@ -30,7 +30,9 @@ export function BPMNDownloads({ processo }: { processo: ProcessoBiblioteca }) {
       `Objetivo: ${processo.objetivo}`,
       `Legislação: ${processo.legislacao || '—'}`,
       `Sistemas: ${processo.sistemas.join('; ') || '—'}`,
-      `Documentos citados: ${documentos.join('; ') || '—'}`,
+      '',
+      'Checklist de Documentos Exigidos:',
+      ...(documentos.length > 0 ? documentos.map((doc, idx) => `  [ ] ${idx + 1}. ${doc}`) : ['  —']),
     ].join('\n')
     baixar(`${processo.codigo}-ficha-tecnica.txt`, linhas, 'text/plain;charset=utf-8')
   }
@@ -38,9 +40,9 @@ export function BPMNDownloads({ processo }: { processo: ProcessoBiblioteca }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Anexos e Documentação</CardTitle>
+        <CardTitle className="text-base">Artefatos e Requisitos Documentais</CardTitle>
         <p className="text-xs text-fx-cinza">
-          Artefatos do processo disponíveis para download institucional.
+          Exportação do fluxo e relação de documentos exigidos na instrução do processo.
         </p>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
@@ -56,13 +58,13 @@ export function BPMNDownloads({ processo }: { processo: ProcessoBiblioteca }) {
             </Button>
           )}
           <Button type="button" size="sm" variant="outline" onClick={baixarFichaTecnica}>
-            <FileText className="mr-1.5 h-4 w-4" /> Ficha técnica (.txt)
+            <FileText className="mr-1.5 h-4 w-4" /> Ficha técnica e checklist (.txt)
           </Button>
         </div>
 
         <div className="space-y-2">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-fx-cinza">
-            <Link2 className="h-3.5 w-3.5" /> Documentos vinculados na entrevista
+            <Link2 className="h-3.5 w-3.5" /> Requisitos documentais informados na entrevista
           </p>
           {documentos.length === 0 ? (
             <p className="text-sm text-fx-cinza">
@@ -79,23 +81,9 @@ export function BPMNDownloads({ processo }: { processo: ProcessoBiblioteca }) {
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-fx-sucesso" />
                     <span className="truncate">{documento}</span>
                   </span>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 shrink-0"
-                    aria-label={`Baixar referência ${documento}`}
-                    title="Baixar referência documental"
-                    onClick={() =>
-                      baixar(
-                        `${processo.codigo}-documento.txt`,
-                        `Processo: ${processo.nome}\nDocumento: ${documento}\nVersão: v${processo.versaoAtual}\n`,
-                        'text/plain;charset=utf-8',
-                      )
-                    }
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
+                  <span className="shrink-0 rounded-sm bg-fx-nevoa/60 px-2 py-0.5 text-[11px] font-medium text-fx-marinho">
+                    Requisito
+                  </span>
                 </li>
               ))}
             </ul>

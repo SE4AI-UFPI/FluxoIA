@@ -147,6 +147,51 @@ export function ProcessMappingPage() {
     setPageError(null)
   }
 
+  const isLocked =
+    process.status === 'Aguardando Validação do Gestor' ||
+    process.status === 'Aprovado' ||
+    process.status === 'Publicado'
+
+  function handleSelectWizardStep(targetStep: ProcessStep) {
+    if (isLocked) return
+    if (targetStep === 1) {
+      changeStep(1, process.status === 'Ajustes Solicitados' ? 'Ajustes Solicitados' : 'Rascunho')
+      return
+    }
+    const errors = validateProcessInfo(process.info)
+    setInfoErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      setPageError('Preencha os dados iniciais obrigatórios antes de avançar.')
+      return
+    }
+    if (targetStep === 2) {
+      changeStep(2, process.status === 'Ajustes Solicitados' ? 'Ajustes Solicitados' : 'Em Entrevista')
+      return
+    }
+    if (targetStep === 3) {
+      finishInterview()
+      return
+    }
+    if (targetStep === 4) {
+      continueToFeedback()
+    }
+  }
+
+  const latestAdjustmentNote = (() => {
+    if (process.status !== 'Ajustes Solicitados') return null
+    for (let idx = process.history.length - 1; idx >= 0; idx -= 1) {
+      const entry = process.history[idx]
+      if (entry.reason.startsWith('Correção solicitada:')) {
+        return {
+          reviewer: entry.user,
+          date: entry.date,
+          note: entry.reason.replace(/^Correção solicitada:\s*/i, ''),
+        }
+      }
+    }
+    return null
+  })()
+
   return (
     <div className="min-h-screen bg-fx-fundo text-fx-grafite">
       <header className="border-b border-fx-linha bg-fx-papel">
@@ -172,7 +217,9 @@ export function ProcessMappingPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wider text-fx-cinza">Mapeamento de Processos</p>
-            <h1 className="font-serif text-3xl font-semibold leading-tight text-fx-marinho">Novo Processo</h1>
+            <h1 className="font-serif text-3xl font-semibold leading-tight text-fx-marinho">
+              {process.info.name.trim() || 'Novo Processo'}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             <ProcessStatus status={process.status} />
@@ -191,7 +238,7 @@ export function ProcessMappingPage() {
                 <span className="sm:hidden">Excluir</span>
               </Button>
             )}
-            {process.status !== 'Aguardando Validação do Gestor' && (
+            {!isLocked && (
               <Button type="button" variant="outline" size="sm" onClick={saveDraft}>
                 <Save className="h-4 w-4" /> <span className="hidden sm:inline">Salvar Rascunho</span>
               </Button>
@@ -199,7 +246,53 @@ export function ProcessMappingPage() {
           </div>
         </div>
 
-        <ProcessWizard currentStep={process.step} />
+        <ProcessWizard
+          currentStep={process.step}
+          onSelectStep={handleSelectWizardStep}
+          disabled={isLocked}
+        />
+
+        {latestAdjustmentNote && (
+          <div
+            role="region"
+            aria-label="Parecer da supervisão para correção"
+            className="flex flex-col gap-3 rounded-sm border border-amber-500/40 bg-amber-50 px-4 py-3.5 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+              <div className="space-y-1">
+                <p className="font-semibold text-amber-950">
+                  Correção solicitada por {latestAdjustmentNote.reviewer}
+                </p>
+                <p className="text-xs leading-relaxed text-amber-900">
+                  {latestAdjustmentNote.note}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {process.step !== 2 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changeStep(2, 'Ajustes Solicitados')}
+                >
+                  Revisar Entrevista
+                </Button>
+              )}
+              {process.step !== 3 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changeStep(3, 'Ajustes Solicitados')}
+                >
+                  Ir ao Diagrama BPMN
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {pageError && (
           <div role="alert" className="flex items-start gap-2 rounded-sm border border-fx-alerta/40 bg-fx-alerta/10 px-3.5 py-3 text-sm text-fx-alerta">

@@ -240,26 +240,62 @@ export function FeedbackStep({
   submissionError?: string | null
 }) {
   const [fichaAberta, setFichaAberta] = useState(false)
-  const submitted = process.status === 'Aguardando Validação do Gestor'
+  const submitted =
+    process.status === 'Aguardando Validação do Gestor' ||
+    process.status === 'Aprovado' ||
+    process.status === 'Publicado'
 
   if (submitted) {
+    const statusTitle =
+      process.status === 'Publicado'
+        ? 'Processo publicado institucionalmente'
+        : process.status === 'Aprovado'
+          ? 'Processo homologado pela supervisão'
+          : 'Processo encaminhado para validação'
+
+    const statusDescription =
+      process.status === 'Publicado' || process.status === 'Aprovado'
+        ? 'Este fluxo já foi homologado pela governança e encontra-se bloqueado para edições.'
+        : 'O fluxo e a avaliação da IA foram confirmados e aguardam análise do supervisor.'
+
     return (
       <div className="space-y-5">
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-xl">Processo encaminhado para validação</CardTitle>
+              <CardTitle className="text-xl">{statusTitle}</CardTitle>
               <ProcessStatus status={process.status} />
             </div>
-            <CardDescription>O fluxo e a avaliação da IA foram confirmados e registrados.</CardDescription>
+            <CardDescription>{statusDescription}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 border-t border-fx-linha/70 pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <div><p className="text-[11px] text-fx-cinza">Código do Processo</p><p className="mt-1 font-mono text-sm font-semibold text-fx-marinho">{process.code}</p></div>
             <div><p className="text-[11px] text-fx-cinza">Versão</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.version}</p></div>
-            <div><p className="text-[11px] text-fx-cinza">Data de Envio</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.sentAt ? new Date(process.sentAt).toLocaleString('pt-BR') : 'Agora'}</p></div>
+            <div><p className="text-[11px] text-fx-cinza">Data de Envio</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.sentAt ? new Date(process.sentAt).toLocaleString('pt-BR') : new Date(process.updatedAt).toLocaleString('pt-BR')}</p></div>
             <div><p className="text-[11px] text-fx-cinza">Nota de Precisão IA</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{feedback.accuracyScore} / 5</p></div>
           </CardContent>
         </Card>
+
+        {process.bpmnXml && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4 text-fx-azul" />
+                <CardTitle className="text-base">Diagrama BPMN 2.0 · {process.info.name}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <BPMNEditor
+                xml={process.bpmnXml}
+                filename={process.code ?? 'processo-bpmn'}
+                status={process.status}
+                isSaving={false}
+                onSaveLayout={onSaveLayout}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         <VersionHistory entries={process.history} />
         <Button type="button" onClick={onNewProcess}>Iniciar outro processo</Button>
       </div>

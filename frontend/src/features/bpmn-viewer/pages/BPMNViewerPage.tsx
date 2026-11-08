@@ -9,7 +9,7 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,6 +38,7 @@ function baixarXml(processo: ProcessoBiblioteca) {
 
 export function BPMNViewerPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user, logout } = useAuth()
   const biblioteca = useBPMNViewer(user?.id ?? '')
 
@@ -45,6 +46,24 @@ export function BPMNViewerPage() {
   const historicoRef = React.useRef<HTMLDivElement>(null)
   const visualizadorRef = React.useRef<HTMLDivElement>(null)
   const [painelAberto, setPainelAberto] = React.useState(true)
+
+  const processoQuery = searchParams.get('processo')
+
+  React.useEffect(() => {
+    if (!biblioteca.processos.length) return
+    if (processoQuery && biblioteca.processos.some((item) => item.id === processoQuery)) {
+      biblioteca.selecionar(processoQuery)
+      window.requestAnimationFrame(() =>
+        visualizadorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      )
+    } else if (!biblioteca.selecionado) {
+      const primeiroComDiagrama =
+        biblioteca.processos.find((item) => Boolean(item.bpmnXml)) ?? biblioteca.processos[0]
+      if (primeiroComDiagrama) {
+        biblioteca.selecionar(primeiroComDiagrama.id)
+      }
+    }
+  }, [biblioteca.processos, processoQuery])
 
   const selecionado = biblioteca.selecionado
   const statusSelecionado =

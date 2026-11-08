@@ -48,9 +48,21 @@ export function ValidationPage() {
     [processos, processoId],
   )
 
+  React.useEffect(() => {
+    if (!processoId) {
+      setChecklist({})
+      return
+    }
+    try {
+      const saved = sessionStorage.getItem(`fluxoia_checklist:${processoId}`)
+      setChecklist(saved ? (JSON.parse(saved) as EstadoChecklist) : {})
+    } catch {
+      setChecklist({})
+    }
+  }, [processoId])
+
   function selecionar(processo: ProcessoSupervisao) {
     setParecer('')
-    setChecklist({})
     setErroAcao(null)
     setAviso(null)
     setAba(processo.status === 'aguardando_validacao' ? 'pendentes' : 'finalizados')
@@ -78,6 +90,9 @@ export function ValidationPage() {
             : 'Processo devolvido para reajuste completo.'
       setParecer('')
       setChecklist({})
+      if (selecionado) {
+        sessionStorage.removeItem(`fluxoia_checklist:${selecionado.id}`)
+      }
       setSearchParams({})
       recarregar()
       setAviso(mensagem)
@@ -106,7 +121,17 @@ export function ValidationPage() {
   }
 
   function alternarItem(item: ChecklistItem) {
-    setChecklist((atual) => alternarEstadoChecklist(atual, item))
+    setChecklist((atual) => {
+      const proximo = alternarEstadoChecklist(atual, item)
+      if (processoId) {
+        try {
+          sessionStorage.setItem(`fluxoia_checklist:${processoId}`, JSON.stringify(proximo))
+        } catch {
+          // ignora falha de armazenamento
+        }
+      }
+      return proximo
+    })
   }
 
   const avisoConformidade = React.useMemo(() => {
