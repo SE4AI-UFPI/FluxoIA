@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { DashboardPlaceholder } from '@/pages/DashboardPlaceholder'
 import { LoginPage } from '@/pages/LoginPage'
 import { UserRegistrationPage } from '@/features/users/UserRegistrationPage'
+import { UsersManagementPage } from '@/features/users/UsersManagementPage'
 import { canAccessMenu } from '@/features/navigation/permissions.config'
 import { Sidebar } from '@/features/navigation/sidebar'
 
@@ -145,6 +146,16 @@ export function App() {
             element={
               <ProtectedRoute>
                 <DashboardPlaceholder />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/usuarios"
+            element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <UsersManagementPage />
+                </AdminRoute>
               </ProtectedRoute>
             }
           />

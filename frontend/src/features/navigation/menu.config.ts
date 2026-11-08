@@ -50,7 +50,7 @@ export const MENU_ITEMS: MenuConfigItem[] = [
   {
     id: 'user-management',
     label: 'Gestão de Usuários',
-    path: '/usuarios/novo',
+    path: '/usuarios',
     icon: UsersRound,
     permission: 'users:manage',
   },

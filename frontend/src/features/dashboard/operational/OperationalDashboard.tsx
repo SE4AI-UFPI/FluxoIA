@@ -213,10 +213,10 @@ export function OperationalDashboard({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => navigate('/usuarios/novo')}
+                onClick={() => navigate('/usuarios')}
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Cadastrar Usuário</span>
+                <span className="hidden sm:inline">Gestão de Usuários</span>
               </Button>
             )}
             <div className="hidden flex-col items-end sm:flex">
