@@ -214,7 +214,12 @@ export function BPMNViewerPage() {
                       </div>
                     }
                   >
-                    <BPMNViewer xml={selecionado.bpmnXml} nomeArquivo={selecionado.codigo} />
+                    <BPMNViewer
+                      xml={selecionado.bpmnXml}
+                      nomeArquivo={selecionado.codigo}
+                      nomeProcesso={selecionado.nome}
+                      status={selecionado.status}
+                    />
                   </React.Suspense>
                 ) : (
                   <p className="rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-6 text-sm text-fx-cinza">

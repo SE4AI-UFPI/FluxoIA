@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BPMNEditor } from '@/features/process-mapping/components/BPMNEditor'
 import type { ProcessoSupervisao } from '../types/supervisor.types'
+import { mapApiStatusToWizardStatus } from '@/features/process-mapping/services/process.service'
 
 export function BPMNReviewPanel({
   processo,
@@ -40,7 +41,9 @@ export function BPMNReviewPanel({
           <BPMNEditor
             xml={processo.bpmn_xml_atual}
             filename={processo.codigo ?? 'processo-bpmn'}
-            status="Aguardando Validação do Gestor"
+            processName={processo.nome}
+            status={mapApiStatusToWizardStatus(processo.status)}
+            readOnly
             onSaveLayout={() => undefined}
           />
         ) : (

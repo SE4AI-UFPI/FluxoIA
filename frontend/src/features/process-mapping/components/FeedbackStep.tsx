@@ -288,6 +288,7 @@ export function FeedbackStep({
               <BPMNEditor
                 xml={process.bpmnXml}
                 filename={process.code ?? 'processo-bpmn'}
+                processName={process.info.name}
                 status={process.status}
                 isSaving={false}
                 onSaveLayout={onSaveLayout}
@@ -388,6 +389,7 @@ export function FeedbackStep({
             <BPMNEditor
               xml={process.bpmnXml}
               filename={process.code ?? 'processo-bpmn'}
+              processName={process.info.name}
               status={process.status}
               isSaving={isSavingLayout}
               onSaveLayout={onSaveLayout}
