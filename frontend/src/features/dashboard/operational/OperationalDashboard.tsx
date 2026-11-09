@@ -22,7 +22,6 @@ import {
 } from '@/features/process-mapping/services/process.service'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 import {
-  PROCESSOS_DEMONSTRACAO,
   SETORES_PROCESSO,
   STATUS_PROCESSO,
   type ProcessoResumo,
@@ -153,7 +152,8 @@ export function OperationalDashboard({
   logout: () => void
 }) {
   const navigate = useNavigate()
-  const [processes, setProcesses] = React.useState<ProcessoResumo[]>(PROCESSOS_DEMONSTRACAO)
+  const [processes, setProcesses] = React.useState<ProcessoResumo[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [syncedWithApi, setSyncedWithApi] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [sector, setSector] = React.useState('Todos os Setores')
@@ -161,6 +161,7 @@ export function OperationalDashboard({
 
   React.useEffect(() => {
     let active = true
+    setIsLoading(true)
     fetchProcessosFromApi()
       .then((apiProcessos) => {
         if (!active) return
@@ -169,8 +170,11 @@ export function OperationalDashboard({
       })
       .catch(() => {
         if (!active) return
-        setProcesses(PROCESSOS_DEMONSTRACAO)
+        setProcesses([])
         setSyncedWithApi(false)
+      })
+      .finally(() => {
+        if (active) setIsLoading(false)
       })
     return () => {
       active = false
@@ -233,10 +237,7 @@ export function OperationalDashboard({
         <Card>
           <CardContent className="flex flex-col items-start justify-between gap-5 pt-6 sm:flex-row sm:items-center">
             <div className="max-w-3xl space-y-2">
-              <Badge variant="secondary" className="normal-case tracking-normal">
-                <Workflow className="mr-1.5 h-3.5 w-3.5" />
-                Mapeamento de processos
-              </Badge>
+              
               <h1 className="font-serif text-3xl font-semibold leading-tight text-fx-marinho sm:text-4xl">
                 Bem-vindo ao Mapeamento de Processos
               </h1>
@@ -305,11 +306,19 @@ export function OperationalDashboard({
                 Acompanhe os processos criados e o andamento do fluxo de validação institucional.
               </CardDescription>
             </div>
-            {syncedWithApi ? (
-              <Badge variant="success">Sincronizado com a API</Badge>
-            ) : (
-              <Badge variant="outline">Dados de demonstração</Badge>
-            )}
+            <div
+              className="flex items-center gap-2 cursor-help"
+              title={syncedWithApi ? "Online" : "Offline"}
+              aria-label={syncedWithApi ? "Online" : "Offline"}
+            >
+              <span
+                className={`inline-block h-3 w-3 rounded-full transition-colors ${
+                  syncedWithApi
+                    ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
+                    : "bg-rose-500 shadow-sm shadow-rose-500/50"
+                }`}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(170px,0.65fr)_minmax(170px,0.65fr)]">
@@ -352,7 +361,14 @@ export function OperationalDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProcesses.map((processo) => (
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-xs text-fx-cinza animate-pulse">
+                        Carregando processos...
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProcesses.map((processo) => (
                     <tr key={processo.id} className="border-b border-fx-linha/70 last:border-0">
                       <td className="px-3 py-3.5">
                         <p className="text-sm font-semibold text-fx-marinho">{processo.nome}</p>
@@ -363,16 +379,22 @@ export function OperationalDashboard({
                       <td className="px-3 py-3.5"><StatusBadge status={processo.status} /></td>
                       <td className="px-3 py-3.5"><ProcessActions processo={processo} /></td>
                     </tr>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
-              {filteredProcesses.length === 0 && (
+              {!isLoading && filteredProcesses.length === 0 && (
                 <p className="py-10 text-center text-sm text-fx-cinza">Nenhum processo encontrado para os filtros selecionados.</p>
               )}
             </div>
 
             <ul className="space-y-3 md:hidden">
-              {filteredProcesses.map((processo) => (
+              {isLoading ? (
+                <li className="rounded-sm border border-fx-linha bg-fx-papel p-4 text-center text-xs text-fx-cinza animate-pulse">
+                  Carregando processos...
+                </li>
+              ) : (
+                filteredProcesses.map((processo) => (
                 <li key={processo.id} className="rounded-sm border border-fx-linha bg-fx-papel p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -386,19 +408,15 @@ export function OperationalDashboard({
                     <StatusBadge status={processo.status} />
                   </div>
                 </li>
-              ))}
-              {filteredProcesses.length === 0 && (
+              ))
+              )}
+              {!isLoading && filteredProcesses.length === 0 && (
                 <li className="py-8 text-center text-sm text-fx-cinza">Nenhum processo encontrado para os filtros selecionados.</li>
               )}
             </ul>
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-fx-linha/70 pt-3 text-xs text-fx-cinza">
               <span>Exibindo {filteredProcesses.length} de {processes.length} processos</span>
-              <span>
-                {syncedWithApi
-                  ? 'Conectado em tempo real com /api/processos/.'
-                  : 'Exibindo dados de demonstração locais.'}
-              </span>
             </div>
           </CardContent>
         </Card>
