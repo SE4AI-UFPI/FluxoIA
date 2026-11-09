@@ -169,6 +169,16 @@ export function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/usuarios/:id/editar"
+            element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <UserRegistrationPage />
+                </AdminRoute>
+              </ProtectedRoute>
+            }
+          />
           <Route path="/mapear-processo" element={<ProcessMappingRoute />} />
           <Route path="/processos/novo" element={<ProcessMappingRoute />} />
           <Route path="/governanca" element={<GovernanceRoute />} />
