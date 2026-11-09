@@ -1,3 +1,4 @@
+import { generateUUID } from '@/lib/utils'
 import type { InterviewAnswerKey, ProcessInfo } from '../types/process.types'
 
 function escapeXml(value: string): string {
@@ -23,7 +24,7 @@ export function generateProcessBpmn(
   info: ProcessInfo,
   answers: Record<InterviewAnswerKey, string>,
 ): string {
-  const processId = `Process_${crypto.randomUUID().replaceAll('-', '')}`
+  const processId = `Process_${generateUUID().replaceAll('-', '')}`
   const activities = getActivities(answers.activities)
   const taskIds = activities.map((_, index) => `Activity_${index + 1}`)
   const flowIds = Array.from({ length: taskIds.length + 1 }, (_, index) => `Flow_${index + 1}`)
@@ -51,7 +52,7 @@ export function generateProcessBpmn(
   }).join('')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_${crypto.randomUUID().replaceAll('-', '')}" targetNamespace="https://fluxoia.gov.br/bpmn">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_${generateUUID().replaceAll('-', '')}" targetNamespace="https://fluxoia.gov.br/bpmn">
   <bpmn:process id="${processId}" name="${escapeXml(info.name)}" isExecutable="false">
     <bpmn:documentation>Áreas envolvidas: ${escapeXml(answers.areasInvolved || 'Não informado')}</bpmn:documentation>
     <bpmn:startEvent id="StartEvent" name="${escapeXml(answers.trigger || 'Início')}" />

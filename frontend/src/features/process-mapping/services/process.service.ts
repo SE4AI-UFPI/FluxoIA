@@ -1,4 +1,5 @@
 import { apiClient } from '@/services/apiClient'
+import { generateUUID } from '@/lib/utils'
 import type {
   ApiProcesso,
   ProcessFeedback,
@@ -96,7 +97,7 @@ export function mapApiStatusToWizardStatus(status: ApiProcesso['status']): Proce
 export function createInitialProcess(ownerId: string, defaultSector: string): ProcessWizardState {
   const now = new Date().toISOString()
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     backendId: null,
     ownerId,
     info: {
