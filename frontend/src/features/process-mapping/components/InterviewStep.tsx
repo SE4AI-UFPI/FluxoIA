@@ -43,6 +43,15 @@ export function InterviewStep({
 
   const chatContainerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
+  const finishButtonRef = React.useRef<HTMLButtonElement>(null)
+  const focusAfterAnswerRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    if (!focusAfterAnswerRef.current) return
+    focusAfterAnswerRef.current = false
+    const nextControl = finishButtonRef.current ?? inputRef.current
+    nextControl?.focus({ preventScroll: true })
+  })
 
   // Determina qual é a pergunta atual na fila
   const currentQuestionIndex = Math.min(Math.max(0, questionIndex), Math.max(0, currentQuestions.length - 1))
@@ -121,6 +130,7 @@ export function InterviewStep({
       return
     }
 
+    focusAfterAnswerRef.current = true
     onAnswer(targetKey, trimmed)
 
     if (editingKey) {
@@ -137,6 +147,7 @@ export function InterviewStep({
 
   function handleSkip() {
     if (isTyping || currentQuestion.required) return
+    focusAfterAnswerRef.current = true
     if (!answers[currentQuestion.id]) {
       onAnswer(currentQuestion.id, '')
     }
@@ -157,6 +168,13 @@ export function InterviewStep({
 
   return (
     <Card className="flex flex-col border-fx-linha bg-fx-papel shadow-sm overflow-hidden">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {isInterviewComplete
+          ? 'Entrevista concluída. Você pode finalizar ou editar as respostas.'
+          : isTyping
+            ? 'Assistente preparando a próxima pergunta'
+            : `Pergunta ${currentQuestionIndex + 1} de ${currentQuestions.length}. ${currentQuestion.title}. ${currentQuestion.prompt}`}
+      </p>
       {/* Cabeçalho do Chat com Progresso */}
       <CardHeader className="border-b border-fx-linha/70 pb-4 bg-fx-fundo/40">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -272,7 +290,7 @@ export function InterviewStep({
             )
           })}
           {isTyping && (
-            <div className="flex max-w-[85%] items-start gap-3" role="status">
+            <div className="flex max-w-[85%] items-start gap-3" aria-hidden="true">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
                 <Bot className="h-4 w-4" />
               </div>
@@ -335,7 +353,7 @@ export function InterviewStep({
                 <textarea
                   ref={inputRef}
                   rows={2}
-                  disabled={isTyping && !editingKey}
+                  readOnly={isTyping && !editingKey}
                   aria-label={editingKey ? 'Editar resposta' : 'Sua resposta'}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
@@ -401,7 +419,7 @@ export function InterviewStep({
 
           <div className="flex items-center gap-2">
             {isInterviewComplete ? (
-              <Button type="button" onClick={onFinish} className="bg-fx-sucesso hover:bg-fx-sucesso/90 text-white">
+              <Button ref={finishButtonRef} type="button" onClick={onFinish} className="bg-fx-sucesso hover:bg-fx-sucesso/90 text-white">
                 Finalizar Entrevista e Gerar BPMN <Check className="h-4 w-4 ml-1.5" />
               </Button>
             ) : (
