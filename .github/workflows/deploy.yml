@@ -9,63 +9,38 @@ on:
 jobs:
   test:
     name: Run Unit Tests & Build Frontend
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Backend Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
-
       - name: Run Backend Tests
         run: |
+          if [ ! -d "backend/venv" ]; then
+            python3 -m venv backend/venv
+          fi
+          source backend/venv/bin/activate
+          pip install --upgrade pip --quiet
+          pip install -r backend/requirements.txt --quiet
           pytest backend/tests
+          deactivate
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Frontend Dependencies
+      - name: Test Frontend Build
         run: |
-          npm ci --prefix frontend
-
-      - name: Build Frontend
-        run: |
-          npm run build --prefix frontend
+          cd frontend
+          npm install --silent
+          npm run build
 
   deploy:
     name: Deploy to Contabo VPS
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Execute Remote SSH Commands
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          script: |
-            set -e
-            APP_DIR="/var/www/fluxoia"
-            if [ ! -d "$APP_DIR" ]; then
-              echo "Diretório $APP_DIR não encontrado na VPS. Por favor, faça o git clone inicial primeiro."
-              exit 1
-            fi
-            cd "$APP_DIR"
-            chmod +x scripts/deploy.sh
-            ./scripts/deploy.sh
+      - name: Execute Deploy Script
+        run: |
+          cd /var/www/fluxoia
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
