@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowLeft,
@@ -182,6 +182,8 @@ function TextField({
 
 export function UserRegistrationPage() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id?: string }>()
+  const isEditing = Boolean(id)
   const { user, logout } = useAuth()
   const [form, setForm] = React.useState<FormularioUsuario>(INITIAL_FORM)
   const [availableSectors, setAvailableSectors] = React.useState<string[]>(SETORES_INSTITUCIONAIS)
@@ -192,6 +194,55 @@ export function UserRegistrationPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [success, setSuccess] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [isLoadingUser, setIsLoadingUser] = React.useState(isEditing)
+
+  // Carrega dados do usuário quando em modo de edição
+  React.useEffect(() => {
+    if (!id) return
+    let active = true
+    setIsLoadingUser(true)
+    usersService
+      .get(id)
+      .then((data) => {
+        if (!active) return
+        setForm({
+          nome: data.nome || '',
+          cpf: data.cpf || '',
+          email: data.email || '',
+          matricula: data.matricula || '',
+          cargo: data.cargo || '',
+          secretaria: data.secretaria || '',
+          telefone: data.telefone || '',
+          setor: data.setor || '',
+          setores_vinculados: data.setores_vinculados ?? [],
+          papel: data.papel,
+          permissoes:
+            data.permissoes && data.permissoes.length > 0
+              ? data.permissoes
+              : PERMISSOES_POR_PERFIL[data.papel]?.map((item) => item.id) ?? [],
+          is_active: data.is_active,
+          password: '',
+        })
+        if (data.setor?.trim()) {
+          setAvailableSectors((prev) =>
+            prev.includes(data.setor.trim()) ? prev : [data.setor.trim(), ...prev],
+          )
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(
+            err instanceof Error ? err.message : 'Não foi possível carregar os dados do usuário.',
+          )
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingUser(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [id])
 
   // Carrega também os setores já existentes nos usuários e processos do banco
   // para que qualquer setor já utilizado apareça automaticamente no <select>.
@@ -297,6 +348,18 @@ export function UserRegistrationPage() {
       setError('Selecione ou informe o setor de atuação para o perfil selecionado.')
       return
     }
+    if (!isEditing && !form.password) {
+      setError('Informe a senha inicial do usuário.')
+      return
+    }
+    if (!isEditing && form.password.length < 8) {
+      setError('A senha deve ter no mínimo 8 caracteres.')
+      return
+    }
+    if (isEditing && form.password && form.password.length < 8) {
+      setError('A nova senha deve ter no mínimo 8 caracteres.')
+      return
+    }
 
     setIsSubmitting(true)
     try {
@@ -306,24 +369,44 @@ export function UserRegistrationPage() {
           ? Array.from(new Set([primarySector, ...form.setores_vinculados].filter(Boolean)))
           : form.setores_vinculados
 
-      const payload: CriarUsuarioPayload = {
-        ...form,
-        nome: form.nome.trim(),
-        cpf: form.cpf.replace(/\D/g, ''),
-        email: form.email.trim().toLowerCase(),
-        secretaria: form.secretaria.trim(),
-        setor: primarySector,
-        setores_vinculados: linkedSectors,
-        password: form.password,
+      if (isEditing && id) {
+        const updatePayload: Partial<CriarUsuarioPayload> = {
+          nome: form.nome.trim(),
+          cpf: form.cpf ? form.cpf.replace(/\D/g, '') : '',
+          email: form.email.trim().toLowerCase(),
+          matricula: form.matricula.trim(),
+          cargo: form.cargo.trim(),
+          secretaria: form.secretaria.trim(),
+          telefone: form.telefone.trim(),
+          setor: primarySector,
+          setores_vinculados: linkedSectors,
+          papel: form.papel,
+          permissoes: form.permissoes,
+          is_active: form.is_active,
+          ...(form.password.trim() ? { password: form.password.trim() } : {}),
+        }
+        const updated = await usersService.update(id, updatePayload)
+        navigate('/usuarios', { state: { updatedUserName: updated.nome } })
+      } else {
+        const payload: CriarUsuarioPayload = {
+          ...form,
+          nome: form.nome.trim(),
+          cpf: form.cpf.replace(/\D/g, ''),
+          email: form.email.trim().toLowerCase(),
+          secretaria: form.secretaria.trim(),
+          setor: primarySector,
+          setores_vinculados: linkedSectors,
+          password: form.password,
+        }
+        const created = await usersService.create(payload)
+        setForm(INITIAL_FORM)
+        navigate('/usuarios', { state: { createdUserName: created.nome } })
       }
-      const created = await usersService.create(payload)
-      setForm(INITIAL_FORM)
-      navigate('/usuarios', { state: { createdUserName: created.nome } })
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : 'Não foi possível cadastrar o usuário.',
+          : 'Não foi possível salvar o usuário.',
       )
     } finally {
       setIsSubmitting(false)
@@ -378,15 +461,22 @@ export function UserRegistrationPage() {
             Gestão de usuários
           </p>
           <h1 className="font-serif text-3xl font-semibold leading-tight text-fx-marinho">
-            Cadastrar Novo Usuário
+            {isEditing ? `Editar Usuário: ${form.nome || '...'}` : 'Cadastrar Novo Usuário'}
           </h1>
           <p className="max-w-3xl text-sm leading-relaxed text-fx-cinza">
-            Cadastre um novo usuário e defina seu nível de acesso e escopo de atuação dentro da
-            plataforma.
+            {isEditing
+              ? 'Atualize os dados funcionais, perfil de acesso e escopo de atuação do usuário.'
+              : 'Cadastre um novo usuário e defina seu nível de acesso e escopo de atuação dentro da plataforma.'}
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-5" noValidate>
+        {isLoadingUser ? (
+          <div className="flex h-64 items-center justify-center gap-2 rounded-sm border border-fx-linha bg-white text-sm text-fx-cinza">
+            <Loader2 className="h-5 w-5 animate-spin text-fx-azul" />
+            Carregando dados do usuário...
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-5" noValidate>
           {error && (
             <div
               role="alert"
@@ -481,11 +571,12 @@ export function UserRegistrationPage() {
               </div>
               <TextField
                 id="password"
-                label="Senha inicial"
+                label={isEditing ? 'Nova Senha (opcional)' : 'Senha inicial'}
+                placeholder={isEditing ? 'Deixe em branco para manter a senha atual' : 'Mínimo de 8 caracteres'}
                 type="password"
                 value={form.password}
                 onChange={(value) => updateField('password', value)}
-                required
+                required={!isEditing}
                 autoComplete="new-password"
               />
             </CardContent>
@@ -756,11 +847,12 @@ export function UserRegistrationPage() {
                 ) : (
                   <FileCheck2 className="h-4 w-4" />
                 )}
-                {isSubmitting ? 'Salvando...' : 'Salvar Usuário'}
+                {isSubmitting ? 'Salvando...' : isEditing ? 'Salvar Alterações' : 'Cadastrar Usuário'}
               </Button>
             </CardContent>
           </Card>
         </form>
+        )}
       </main>
     </div>
   )

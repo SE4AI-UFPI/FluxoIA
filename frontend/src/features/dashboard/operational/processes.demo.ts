@@ -1,7 +1,9 @@
 export type ProcessoStatus =
+  | 'Rascunho'
   | 'Em Entrevista'
   | 'Em Modelagem'
   | 'Em Revisão'
+  | 'Ajustes Solicitados'
   | 'Aguardando Aprovação'
   | 'Aprovado'
   | 'Publicado'
@@ -67,9 +69,11 @@ export const PROCESSOS_DEMONSTRACAO: ProcessoResumo[] = [
 ]
 
 export const STATUS_PROCESSO: ProcessoStatus[] = [
+  'Rascunho',
   'Em Entrevista',
   'Em Modelagem',
   'Em Revisão',
+  'Ajustes Solicitados',
   'Aguardando Aprovação',
   'Aprovado',
   'Publicado',

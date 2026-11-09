@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
 
@@ -70,6 +71,15 @@ export function BPMNTechnicalSheet({ processo }: { processo: ProcessoBiblioteca 
               {processo.sistemas.length > 0 ? processo.sistemas.join(' · ') : '—'}
             </p>
           </div>
+          {processo.prazos && (
+            <div className="mt-2 rounded-sm border border-amber-200 bg-amber-50/80 p-2.5 text-xs text-amber-950">
+              <p className="flex items-center gap-1 font-semibold text-[11px] text-amber-900">
+                <Clock className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+                Prazos e Regras de Atendimento:
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-950">{processo.prazos}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

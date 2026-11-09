@@ -32,6 +32,12 @@ interface ApiProcesso {
     motivo_alteracao: string
     gerado_por_nome: string
     criado_em: string
+    estrutura_json?: {
+      ficha_tecnica?: {
+        observacoes_prazo?: string
+        informacoes_gerais?: string
+      }
+    }
   }>
   revisoes_governanca?: Array<{
     id: string
@@ -100,6 +106,15 @@ export function mapearProcesso(api: ApiProcesso): ProcessoBiblioteca | null {
   if (!STATUS_VISIVEIS.includes(api.status as StatusBiblioteca)) return null
 
   const respostas = api.entrevista?.respostas ?? {}
+  const versoes = api.versoes_bpmn ?? []
+  const ultimaVersao = versoes[versoes.length - 1]
+  const fichaPrazo = ultimaVersao?.estrutura_json?.ficha_tecnica?.observacoes_prazo?.trim()
+  const entrevistaPrazo =
+    respostas.exceptions?.toLowerCase().includes('prazo') ||
+    respostas.rules?.toLowerCase().includes('prazo')
+      ? respostas.exceptions || respostas.rules
+      : respostas.rules || respostas.exceptions || ''
+  const prazos = fichaPrazo || entrevistaPrazo || 'Conforme prazo regimental'
 
   return {
     id: api.id,
@@ -122,6 +137,7 @@ export function mapearProcesso(api: ApiProcesso): ProcessoBiblioteca | null {
     bpmnXml: api.bpmn_xml_atual,
     documentos: dividirLista(respostas.documents),
     sistemas: dividirLista(respostas.systems),
+    prazos,
     versoes: mapearVersoes(api),
     revisoes: mapearRevisoes(api),
   }

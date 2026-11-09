@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Check,
   ListFilter,
+  Pencil,
   Search,
   Trash2,
   UserPlus,
@@ -20,6 +21,7 @@ import { PAPEL_LABEL, type PapelUsuario, type Usuario } from '@/types/auth'
 
 interface LocationState {
   createdUserName?: string
+  updatedUserName?: string
 }
 
 export function UsersManagementPage() {
@@ -34,9 +36,13 @@ export function UsersManagementPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [success, setSuccess] = React.useState<string | null>(() => {
     const state = location.state as LocationState | null
-    return state?.createdUserName
-      ? `Usuário ${state.createdUserName} cadastrado com sucesso.`
-      : null
+    if (state?.createdUserName) {
+      return `Usuário ${state.createdUserName} cadastrado com sucesso.`
+    }
+    if (state?.updatedUserName) {
+      return `Usuário ${state.updatedUserName} atualizado com sucesso.`
+    }
+    return null
   })
 
   React.useEffect(() => {
@@ -319,31 +325,44 @@ export function UsersManagementPage() {
                             </Badge>
                           </td>
                           <td className="py-3 pl-4 text-right">
-                            {isSelf ? (
-                              <span className="text-xs text-fx-cinza">Sessão atual</span>
-                            ) : (
-                              <div className="inline-flex items-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => void handleToggleActive(item)}
-                                >
-                                  {item.is_active ? 'Desativar' : 'Ativar'}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-fx-alerta hover:text-fx-alerta"
-                                  aria-label={`Remover ${item.nome}`}
-                                  title="Remover usuário"
-                                  onClick={() => void handleDeleteUser(item)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            )}
+                            <div className="inline-flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-fx-marinho hover:text-fx-azul"
+                                aria-label={`Editar ${item.nome}`}
+                                title="Editar usuário"
+                                onClick={() => navigate(`/usuarios/${item.id}/editar`)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {isSelf ? (
+                                <span className="text-xs text-fx-cinza px-2">Sessão atual</span>
+                              ) : (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void handleToggleActive(item)}
+                                  >
+                                    {item.is_active ? 'Desativar' : 'Ativar'}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-fx-alerta hover:text-fx-alerta"
+                                    aria-label={`Remover ${item.nome}`}
+                                    title="Remover usuário"
+                                    onClick={() => void handleDeleteUser(item)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )

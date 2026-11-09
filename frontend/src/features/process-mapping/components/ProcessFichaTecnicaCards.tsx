@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   CheckCircle2,
   Clock,
   Coins,
@@ -26,18 +25,6 @@ export function ProcessFichaTecnicaCards({ process }: { process: ProcessWizardSt
     process.answers.rules?.toLowerCase().includes('prazo')
       ? process.answers.exceptions || process.answers.rules
       : 'As pendências deverão ser solucionadas dentro do prazo regimental. Após o prazo sem manifestação, o processo poderá ser encerrado.')
-
-  const legendaItens =
-    ficha?.legenda && ficha.legenda.length > 0
-      ? ficha.legenda
-      : [
-          '▲ - Caso seja notificado (Em caso de pendência/diligência)',
-          ...(process.answers.exceptions?.toLowerCase().includes('autua') ||
-          process.answers.exceptions?.toLowerCase().includes('multa')
-            ? ['▼ - Caso seja autuado / emitida notificação fiscal']
-            : []),
-          'Fluxo Sequencial · Caminho principal de tramitação',
-        ]
 
   const rawSistemas =
     ficha?.sistemas && ficha.sistemas.length > 0
@@ -81,36 +68,35 @@ export function ProcessFichaTecnicaCards({ process }: { process: ProcessWizardSt
       </div>
 
       <div className="grid gap-4 sm:grid-cols-1 lg:grid-cols-3">
-        {/* QUADRO 1: LEGENDA & REGRAS DE PRAZO */}
+        {/* QUADRO 1: PRAZOS */}
         <Card className="border-fx-linha bg-white shadow-xs flex flex-col justify-between">
           <CardHeader className="pb-3 border-b border-fx-linha/60 bg-fx-nevoa/40">
             <CardTitle className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fx-marinho">
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-              1. Legenda e Prazos
+              <Clock className="h-3.5 w-3.5 text-amber-600" />
+              1. Prazos
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 p-3.5 text-xs flex-1 flex flex-col justify-between">
-            <div className="space-y-2">
-              <p className="font-semibold text-fx-grafite">Convenções de Desvio:</p>
-              <ul className="space-y-1.5 pl-1 text-fx-cinza">
-                {legendaItens.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-1.5 leading-snug">
-                    <span className="font-mono text-fx-azul font-bold shrink-0">•</span>
-                    <span className="text-fx-grafite">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 p-2.5 text-amber-900">
-              <p className="flex items-center gap-1 font-semibold text-[11px] text-amber-800">
-                <Clock className="h-3 w-3 shrink-0" />
+          <CardContent className="space-y-3 p-3.5 text-xs flex-1 flex flex-col justify-start">
+            <div className="rounded-sm border border-amber-200 bg-amber-50/70 p-3 text-amber-900">
+              <p className="flex items-center gap-1 font-semibold text-xs text-amber-800">
+                <Clock className="h-3.5 w-3.5 shrink-0" />
                 Prazo Limite de Pendências:
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed">
+              <p className="mt-1.5 text-xs leading-relaxed text-amber-950">
                 {observacoesPrazo}
               </p>
             </div>
+
+            {(process.answers.rules || process.answers.exceptions) && (
+              <div className="rounded-sm border border-fx-linha bg-fx-nevoa/20 p-2.5 space-y-1 text-fx-grafite">
+                <p className="font-semibold text-[11px] text-fx-marinho">
+                  Regras e Condições de Atendimento:
+                </p>
+                <p className="text-[11px] leading-relaxed text-fx-cinza">
+                  {process.answers.rules || process.answers.exceptions}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

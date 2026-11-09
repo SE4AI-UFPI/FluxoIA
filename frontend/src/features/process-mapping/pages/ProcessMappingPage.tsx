@@ -81,7 +81,7 @@ export function ProcessMappingPage() {
     }
     wizard.saveDraft()
     setPageError(null)
-    setNotice('Rascunho salvo nesta sessão.')
+    setNotice('Rascunho salvo no banco de dados.')
   }
 
   function continueToInterview() {
@@ -183,14 +183,37 @@ export function ProcessMappingPage() {
   }
 
   const latestAdjustmentNote = (() => {
-    if (process.status !== 'Ajustes Solicitados') return null
+    if (isLocked) return null
     for (let idx = process.history.length - 1; idx >= 0; idx -= 1) {
       const entry = process.history[idx]
-      if (entry.reason.startsWith('Correção solicitada:')) {
+      if (
+        entry.reason.startsWith('Fluxo confirmado e enviado para validação') ||
+        entry.reason.startsWith('Homologado pela supervisão:')
+      ) {
+        return null
+      }
+      const isCorrecao = entry.reason.startsWith('Correção solicitada:')
+      const isDevolvido = entry.reason.startsWith('Devolvido para refazer:')
+      if (isCorrecao || isDevolvido) {
+        const rawText = entry.reason
+          .replace(/^(Correção solicitada|Devolvido para refazer):\s*/i, '')
+          .trim()
+        const matchNaoConformes = rawText.match(/^\[Não conformidades:\s*([^\]]+)\]\s*(.*)$/is)
+        const nonCompliances = matchNaoConformes
+          ? matchNaoConformes[1]
+              .split('|')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : []
+        const cleanNote = matchNaoConformes ? matchNaoConformes[2].trim() : rawText
+
         return {
+          type: isDevolvido ? ('rejeitado' as const) : ('ajustes_solicitados' as const),
           reviewer: entry.user,
-          date: entry.date,
-          note: entry.reason.replace(/^Correção solicitada:\s*/i, ''),
+          date: new Date(entry.date).toLocaleString('pt-BR'),
+          version: entry.version,
+          nonCompliances,
+          note: cleanNote,
         }
       }
     }
@@ -261,40 +284,72 @@ export function ProcessMappingPage() {
           <div
             role="region"
             aria-label="Parecer da supervisão para correção"
-            className="flex flex-col gap-3 rounded-sm border border-amber-500/40 bg-amber-50 px-4 py-3.5 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3.5 rounded-sm border border-amber-500/50 bg-amber-50/95 px-4 py-4 text-sm text-amber-950 shadow-xs"
           >
-            <div className="flex items-start gap-2.5">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-              <div className="space-y-1">
-                <p className="font-semibold text-amber-950">
-                  Correção solicitada por {latestAdjustmentNote.reviewer}
-                </p>
-                <p className="text-xs leading-relaxed text-amber-900">
-                  {latestAdjustmentNote.note}
-                </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-amber-950">
+                      {latestAdjustmentNote.type === 'rejeitado'
+                        ? `Processo devolvido para refazer por ${latestAdjustmentNote.reviewer}`
+                        : `Correção solicitada por ${latestAdjustmentNote.reviewer}`}
+                    </p>
+                    <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[11px] font-medium text-amber-900">
+                      v{latestAdjustmentNote.version} · {latestAdjustmentNote.date}
+                    </span>
+                  </div>
+
+                  {latestAdjustmentNote.nonCompliances.length > 0 && (
+                    <div className="space-y-1.5 rounded-sm border border-amber-400/50 bg-white/75 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-900">
+                        Itens não conformes apontados no checklist ({latestAdjustmentNote.nonCompliances.length})
+                      </p>
+                      <ul className="list-disc space-y-0.5 pl-4 text-xs text-amber-950">
+                        {latestAdjustmentNote.nonCompliances.map((item) => (
+                          <li key={item} className="font-medium">
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {latestAdjustmentNote.note && (
+                    <div className="space-y-0.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+                        Parecer Técnico do Supervisor
+                      </p>
+                      <p className="whitespace-pre-line text-xs leading-relaxed text-amber-950">
+                        {latestAdjustmentNote.note}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              {process.step !== 2 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => changeStep(2, 'Ajustes Solicitados')}
-                >
-                  Revisar Entrevista
-                </Button>
-              )}
-              {process.step !== 3 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => changeStep(3, 'Ajustes Solicitados')}
-                >
-                  Ir ao Diagrama BPMN
-                </Button>
-              )}
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {process.step !== 2 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => changeStep(2, process.status)}
+                  >
+                    Revisar Entrevista
+                  </Button>
+                )}
+                {process.step !== 3 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => changeStep(3, process.status)}
+                  >
+                    Ir ao Diagrama BPMN
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -356,10 +411,6 @@ export function ProcessMappingPage() {
             feedback={process.feedback}
             onFeedbackChange={wizard.updateFeedback}
             onBack={() => changeStep(3, 'Em Modelagem BPMN')}
-            onRegenerate={() => {
-              wizard.requestRegeneration()
-              setPageError(null)
-            }}
             onConfirm={confirmFlow}
             onNewProcess={() => {
               wizard.startNewProcess()
@@ -375,7 +426,7 @@ export function ProcessMappingPage() {
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-fx-linha/70 pt-3 text-xs text-fx-cinza">
           <span>UFPI · FÁBRICA DE IA DO PIAUÍ · SECTI</span>
-          <span>Rascunhos armazenados nesta sessão do navegador</span>
+          <span>Sincronizado em tempo real com o banco de dados</span>
         </footer>
       </main>
       <ProcessDeletionDialog

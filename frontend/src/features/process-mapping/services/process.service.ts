@@ -94,6 +94,33 @@ export function mapApiStatusToWizardStatus(status: ApiProcesso['status']): Proce
   }
 }
 
+const ORDEM_PROGRESSO_STATUS: Record<ProcessStatus, number> = {
+  Excluído: 0,
+  Rascunho: 1,
+  'Em Entrevista': 2,
+  'Em Modelagem BPMN': 3,
+  'Em Avaliação': 4,
+  'Ajustes Solicitados': 5,
+  'Aguardando Validação do Gestor': 6,
+  Aprovado: 7,
+  Publicado: 8,
+}
+
+/**
+ * Garante que a navegação entre etapas do assistente nunca regrida o status do processo
+ * (ex.: voltar da Modelagem para revisar uma resposta da Entrevista mantém "Em Modelagem BPMN",
+ * e processos devolvidos pela supervisão permanecem em "Ajustes Solicitados" até novo envio).
+ */
+export function resolveWizardStatus(
+  currentStatus: ProcessStatus,
+  targetStatus: ProcessStatus,
+): ProcessStatus {
+  if (currentStatus === 'Ajustes Solicitados') return 'Ajustes Solicitados'
+  const currentRank = ORDEM_PROGRESSO_STATUS[currentStatus] ?? 1
+  const targetRank = ORDEM_PROGRESSO_STATUS[targetStatus] ?? 1
+  return targetRank > currentRank ? targetStatus : currentStatus
+}
+
 export function createInitialProcess(ownerId: string, defaultSector: string): ProcessWizardState {
   const now = new Date().toISOString()
   return {
@@ -151,6 +178,11 @@ export function mapApiProcessoToWizardState(
   const versoes = api.versoes_bpmn ?? []
   const latestVersao = versoes[versoes.length - 1]
   const fichaTecnica = latestVersao?.estrutura_json?.ficha_tecnica ?? null
+  const revisoes = api.revisoes_governanca ?? []
+  const latestRevisao = revisoes[revisoes.length - 1]
+  const foiDevolvidoPelaSupervisao =
+    (api.status === 'rascunho' || api.status === 'em_entrevista' || api.status === 'ajustes_solicitados') &&
+    (latestRevisao?.decisao === 'ajustes_solicitados' || latestRevisao?.decisao === 'rejeitado')
 
   return {
     ...base,
@@ -170,7 +202,7 @@ export function mapApiProcessoToWizardState(
     },
     questionIndex: api.entrevista?.pergunta_atual_idx ?? 0,
     step,
-    status: mapApiStatusToWizardStatus(api.status),
+    status: foiDevolvidoPelaSupervisao ? 'Ajustes Solicitados' : mapApiStatusToWizardStatus(api.status),
     bpmnXml: api.bpmn_xml_atual ?? null,
     fichaTecnica,
     version: api.versao_atual || INITIAL_PROCESS_VERSION,
