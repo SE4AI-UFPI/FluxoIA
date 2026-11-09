@@ -44,10 +44,20 @@ interface CanvasService {
 }
 
 interface ElementoDiagrama {
+  id?: string
+  type?: string
   x?: number
   y?: number
   width?: number
   height?: number
+}
+
+interface ResizeService {
+  activate: (
+    event: MouseEvent,
+    shape: ElementoDiagrama,
+    direction: 'n' | 's' | 'e' | 'w',
+  ) => void
 }
 
 interface ElementRegistryService {
@@ -212,6 +222,8 @@ export function BPMNEditor({
     setError(null)
 
     let instance: DiagramInstance
+    let removerListenersBordaRaia: (() => void) | null = null
+
     if (isEditing) {
       const modeler = new BpmnModeler({
         container,
@@ -225,6 +237,86 @@ export function BPMNEditor({
       eventBus.on([...EVENTOS_ESTRUTURAIS_BLOQUEADOS], 1500, () => false)
       eventBus.on('commandStack.changed', 500, () => setDirty(true))
       instance = modeler as unknown as DiagramInstance
+
+      // Permite arrastar diretamente qualquer linha divisória de raia (horizontal ou borda direita)
+      // em qualquer ponto da sua extensão, sem precisar caçar a alça central do diagrama.
+      const detectarBordaRaia = (
+        event: MouseEvent,
+      ): { shape: Required<ElementoDiagrama>; direction: 'n' | 's' | 'e' } | null => {
+        const alvo = event.target as HTMLElement | SVGElement | null
+        if (
+          alvo?.closest?.(
+            '.djs-bendpoint, .djs-segment-dragger, .djs-bendpoints, .djs-resizer',
+          )
+        ) {
+          return null
+        }
+
+        const canvas = modeler.get<CanvasService>('canvas')
+        const registry = modeler.get<ElementRegistryService>('elementRegistry')
+        const vbox = canvas.viewbox()
+        if (!vbox.scale) return null
+
+        const rect = container.getBoundingClientRect()
+        const cx = vbox.x + (event.clientX - rect.left) / vbox.scale
+        const cy = vbox.y + (event.clientY - rect.top) / vbox.scale
+        const tolerancia = 7 / vbox.scale
+
+        const lanes = registry
+          .getAll()
+          .filter(
+            (el): el is Required<ElementoDiagrama> =>
+              el.type === 'bpmn:Lane' &&
+              typeof el.x === 'number' &&
+              typeof el.y === 'number' &&
+              typeof el.width === 'number' &&
+              typeof el.height === 'number',
+          )
+          .sort((a, b) => a.y - b.y)
+
+        for (const lane of lanes) {
+          if (cx >= lane.x - 30 && cx <= lane.x + lane.width) {
+            if (Math.abs(cy - (lane.y + lane.height)) <= tolerancia) {
+              return { shape: lane, direction: 's' }
+            }
+            if (Math.abs(cy - lane.y) <= tolerancia) {
+              return { shape: lane, direction: 'n' }
+            }
+          }
+          if (
+            cy >= lane.y &&
+            cy <= lane.y + lane.height &&
+            Math.abs(cx - (lane.x + lane.width)) <= tolerancia
+          ) {
+            return { shape: lane, direction: 'e' }
+          }
+        }
+        return null
+      }
+
+      const onMouseMove = (event: MouseEvent) => {
+        if (event.buttons !== 0) return
+        const hit = detectarBordaRaia(event)
+        container.style.cursor = hit ? (hit.direction === 'e' ? 'ew-resize' : 'ns-resize') : ''
+      }
+
+      const onMouseDown = (event: MouseEvent) => {
+        if (event.button !== 0) return
+        const hit = detectarBordaRaia(event)
+        if (!hit) return
+        const resize = modeler.get<ResizeService>('resize')
+        event.stopPropagation()
+        event.preventDefault()
+        resize.activate(event, hit.shape, hit.direction)
+      }
+
+      container.addEventListener('mousemove', onMouseMove)
+      container.addEventListener('mousedown', onMouseDown, { capture: true })
+      removerListenersBordaRaia = () => {
+        container.removeEventListener('mousemove', onMouseMove)
+        container.removeEventListener('mousedown', onMouseDown, { capture: true })
+        container.style.cursor = ''
+      }
     } else {
       instance = new NavigatedViewer({ container }) as unknown as DiagramInstance
     }
@@ -252,6 +344,7 @@ export function BPMNEditor({
       })
 
     return () => {
+      removerListenersBordaRaia?.()
       instance.destroy()
       if (instanceRef.current === instance) instanceRef.current = null
     }
@@ -480,7 +573,7 @@ export function BPMNEditor({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-fx-cinza">
             {isEditing
-              ? 'Modo edição visual: arraste elementos e raias para reorganizar. Somente o layout é alterado — a lógica do processo permanece intacta.'
+              ? 'Modo edição visual: arraste elementos, linhas de conexão e divisórias das raias para reorganizar. Somente o layout é alterado — a lógica do processo permanece intacta.'
               : 'Modo visualização: use o scroll para navegar, Ctrl + scroll para ampliar ou os botões de zoom.'}
           </p>
           <div className="flex flex-wrap items-center gap-1.5">

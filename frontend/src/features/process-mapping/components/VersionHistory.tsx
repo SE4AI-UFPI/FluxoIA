@@ -6,7 +6,7 @@ export function VersionHistory({ entries }: { entries: ProcessHistoryEntry[] }) 
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Histórico de Versões</CardTitle>
-        <CardDescription>Gerações e alterações registradas nesta sessão.</CardDescription>
+        <CardDescription>Gerações e alterações registradas no processo.</CardDescription>
       </CardHeader>
       <CardContent>
         {entries.length === 0 ? (

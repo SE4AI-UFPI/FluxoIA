@@ -41,8 +41,6 @@ const COMANDOS_FUNCIONAIS_BLOQUEADOS = new Set([
   'connection.create',
   'connection.reconnect',
   'connection.start',
-  'connection.updateWaypoints',
-  'bendpoint.move',
   'element.updateProperties',
   'element.updateId',
   'element.updateLabel',
@@ -58,9 +56,6 @@ export function comandoFuncionalBloqueado(comando: string): boolean {
 /** Eventos que iniciam alterações estruturais no diagrama (bloqueados no modo edição). */
 export const EVENTOS_ESTRUTURAIS_BLOQUEADOS = [
   'element.dblclick',
-  'bendpoint.move.start',
-  'connection.move.start',
-  'connection.move',
 ] as const
 
 /**

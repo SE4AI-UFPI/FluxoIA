@@ -42,6 +42,7 @@ export interface ProcessoBiblioteca {
   bpmnXml: string | null
   documentos: string[]
   sistemas: string[]
+  prazos: string
   versoes: VersaoBiblioteca[]
   revisoes: RevisaoBiblioteca[]
 }
