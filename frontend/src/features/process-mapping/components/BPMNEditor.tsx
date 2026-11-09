@@ -507,25 +507,23 @@ export function BPMNEditor({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
               aria-label="Baixar SVG"
               title="Baixar SVG"
               onClick={() => void exportSvg()}
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-4 w-4" aria-hidden="true" /> SVG
             </Button>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
               aria-label="Baixar PDF"
               title="Baixar PDF"
               onClick={() => void exportPdf()}
             >
-              <FileDown className="h-4 w-4" />
+              <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
             </Button>
           </div>
         </div>
