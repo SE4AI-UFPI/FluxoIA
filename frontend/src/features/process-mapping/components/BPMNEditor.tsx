@@ -508,7 +508,6 @@ export function BPMNEditor({
             <Button
               type="button"
               size="sm"
-              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
               aria-label="Baixar SVG"
               title="Baixar SVG"
               onClick={() => void exportSvg()}
