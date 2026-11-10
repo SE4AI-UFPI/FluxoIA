@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { InterviewQuestion } from '../services/interview.service'
 import type { InterviewAnswerKey, ProcessInfo } from '../types/process.types'
+import type { InterviewExportContext } from '../services/interview-export.service'
+import { InterviewExportButtons } from './InterviewExportButtons'
 
 export function ReadOnlyDetails({ entries }: { entries: Array<{ label: string; value: ReactNode }> }) {
   return (
@@ -38,15 +40,17 @@ export function ProcessInfoReadOnly({ info }: { info: ProcessInfo }) {
   )
 }
 
-export function InterviewReadOnly({ questions, answers }: {
+export function InterviewReadOnly({ questions, answers, exportContext }: {
   questions: InterviewQuestion[]
   answers: Record<InterviewAnswerKey, string>
+  exportContext?: InterviewExportContext
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl">Entrevista guiada</CardTitle>
         <CardDescription>Somente leitura · Perguntas e respostas registradas no mapeamento.</CardDescription>
+        {exportContext && <InterviewExportButtons data={{ questions, answers, context: exportContext }} />}
       </CardHeader>
       <CardContent>
         {questions.length === 0 ? (

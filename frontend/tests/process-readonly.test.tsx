@@ -82,3 +82,15 @@ test('modo padrão mantém o formulário de edição dos dados iniciais', () => 
   assert.match(html, /Salvar/)
   assert.doesNotMatch(html, /Somente leitura/)
 })
+
+test('consulta da entrevista oferece PDF e Markdown quando recebe a identificação do processo', () => {
+  const html = renderToStaticMarkup(<InterviewStep readOnly questionIndex={0}
+    questions={[{ id: 'trigger', title: 'Início', prompt: 'Quem solicita?', required: true }]}
+    answers={{ trigger: 'O cidadão.' } as Record<InterviewAnswerKey, string>}
+    exportContext={{ name: 'Processo', code: 'TESTE', sector: 'SECT', status: 'Aprovado', version: '1.0', updatedAt: '', authorName: 'Autor' }}
+    onAnswer={fail} onQuestionChange={fail} onBack={fail} onSave={fail} onFinish={fail} />)
+  assert.match(html, /aria-label="Exportar entrevista"/)
+  assert.match(html, /Exportar PDF/)
+  assert.match(html, /Exportar Markdown/)
+  assert.doesNotMatch(html, /<(?:input|textarea|select)\b/)
+})

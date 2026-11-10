@@ -368,6 +368,15 @@ export function ProcessMappingPage() {
         ) : (
           <InterviewStep
             readOnly={isLocked}
+            exportContext={{
+              name: process.info.name,
+              code: process.code,
+              sector: process.info.sector,
+              status: process.status,
+              version: process.version,
+              updatedAt: process.updatedAt,
+              authorName: user.nome,
+            }}
             questions={questions}
             answers={process.answers}
             questionIndex={process.questionIndex}

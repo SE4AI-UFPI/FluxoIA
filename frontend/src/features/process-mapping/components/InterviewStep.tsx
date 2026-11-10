@@ -16,6 +16,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { InterviewQuestion } from '../services/interview.service'
 import type { InterviewAnswerKey } from '../types/process.types'
 import { InterviewReadOnly } from './ProcessReadOnly'
+import type { InterviewExportContext } from '../services/interview-export.service'
+import { InterviewExportButtons } from './InterviewExportButtons'
 
 type InterviewStepProps = {
   questions: InterviewQuestion[]
@@ -27,14 +29,16 @@ type InterviewStepProps = {
   onSave: () => void
   onFinish: () => void
   readOnly?: boolean
+  exportContext?: InterviewExportContext
 }
 
 export function InterviewStep(props: InterviewStepProps) {
-  if (props.readOnly) return <InterviewReadOnly questions={props.questions} answers={props.answers} />
+  if (props.readOnly) return <InterviewReadOnly questions={props.questions} answers={props.answers} exportContext={props.exportContext} />
   return <EditableInterviewStep {...props} />
 }
 
 function EditableInterviewStep({
+  exportContext,
   questions,
   answers,
   questionIndex,
@@ -210,6 +214,7 @@ function EditableInterviewStep({
             </div>
           </div>
         </div>
+        {exportContext && <InterviewExportButtons data={{ questions, answers, context: exportContext }} />}
       </CardHeader>
 
       {/* Feed Contínuo do Chat */}
