@@ -64,6 +64,21 @@ export interface ProcessFeedback {
   generalNotes: string // observação opcional
 }
 
+/** Avaliação já persistida, retornada pelo serializer do processo. */
+export interface ApiProcessFeedback {
+  id: string
+  versao_bpmn: string | null
+  autor: string
+  autor_nome: string
+  representa_processo: boolean
+  nota_precisao_geral: number
+  nivel_edicao_necessario: EditLevelRequired
+  clareza_entrevista: number
+  problemas_identificados: IdentifiedProblemTag[]
+  observacoes: string
+  criado_em: string
+}
+
 export interface ProcessHistoryEntry {
   id: string
   date: string
@@ -86,6 +101,7 @@ export interface ProcessWizardState {
   version: string
   history: ProcessHistoryEntry[]
   feedback: ProcessFeedback
+  hasSavedFeedback: boolean
   code: string | null
   sentAt: string | null
   updatedAt: string
@@ -147,6 +163,7 @@ export interface ApiProcesso {
     gerado_por_nome: string
     criado_em: string
   }>
+  feedbacks_ia?: ApiProcessFeedback[]
   revisoes_governanca?: Array<{
     id: string
     revisor_nome: string

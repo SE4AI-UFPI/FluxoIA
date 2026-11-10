@@ -369,12 +369,15 @@ export function useProcessWizard(user: Usuario) {
           }).catch(() => null)
         }
         const apiSubmitted = await submitProcessToApi(backendId, process.feedback)
+        const submittedState = mapApiProcessoToWizardState(apiSubmitted, user.id, defaultSector)
         setSubmissionError(null)
         setProcess((current) => ({
           ...current,
           backendId: apiSubmitted.id,
           code: apiSubmitted.codigo ?? current.code,
           sentAt: apiSubmitted.submetido_em ?? current.sentAt,
+          feedback: submittedState.hasSavedFeedback ? submittedState.feedback : current.feedback,
+          hasSavedFeedback: submittedState.hasSavedFeedback,
         }))
       } catch (error) {
         setSubmissionError(
