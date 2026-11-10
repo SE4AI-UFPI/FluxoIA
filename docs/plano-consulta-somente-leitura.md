@@ -29,7 +29,7 @@ Mensagem sugerida: `fix(mapping): restaura avaliacao persistida ao reabrir proce
 
 ## Fase 2 — Proteger a entrevista na API
 
-Pendente.
+Implementada, aguardando auditoria e commit.
 
 - Restringir os dados da entrevista ao autor nas respostas da API, incluindo as
   respostas construídas pelas ações específicas do processo.
@@ -38,6 +38,15 @@ Pendente.
   aprovado e publicado.
 - Testar acesso do autor, ausência da entrevista para outros usuários e recusa
   de alterações após o envio.
+
+A serialização omite a entrevista quando não há um solicitante autenticado
+identificado como autor. As ações específicas usam o serializer do ViewSet,
+preservando o contexto da requisição. Os bloqueios de escrita existentes foram
+mantidos e cobertos por testes nos três estados de somente leitura.
+
+Validação: 52 testes do backend passaram em container temporário com banco
+SQLite de teste, incluindo 29 casos de consulta e imutabilidade. O banco da
+aplicação e os containers em execução não foram alterados.
 
 Mensagem sugerida: `fix(api): protege consulta da entrevista apos submissao`
 
