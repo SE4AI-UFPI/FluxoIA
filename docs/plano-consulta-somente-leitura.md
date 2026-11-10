@@ -52,7 +52,7 @@ Mensagem sugerida: `fix(api): protege consulta da entrevista apos submissao`
 
 ## Fase 3 — Apresentar as etapas em somente leitura
 
-Pendente.
+Implementada, aguardando auditoria e commit.
 
 - Adicionar modo de consulta aos dados iniciais, entrevista e avaliação.
 - Exibir perguntas e respostas salvas, inclusive etapas opcionais sem resposta.
@@ -60,6 +60,24 @@ Pendente.
 - Remover os controles de alteração, geração e envio nesse modo e identificar
   claramente que os dados estão em somente leitura.
 - Verificar acessibilidade e apresentação em telas menores.
+
+Os dados iniciais e a entrevista aceitam o modo `readOnly`. A consulta da
+entrevista renderiza todas as perguntas, sem montar os efeitos do chat, e indica
+respostas ausentes. Textos preservam quebras de linha e permitem selecionar e
+copiar o conteúdo. A avaliação enviada agora mostra todos os campos persistidos;
+sem avaliação salva, nenhuma nota inicial é apresentada como resposta enviada.
+
+Os componentes recebem o modo de consulta nos estados bloqueados, mas a
+navegação entre etapas continua dependente da fase 4.
+
+Validação: seis testes de renderização e oito testes de regressão da avaliação
+e PDF passaram; build passou; lint sem erros, com 22 avisos preexistentes.
+Prévia isolada dos componentes conferida no navegador em desktop e em viewport
+de 375 px, incluindo texto longo sem espaços e respostas opcionais vazias, sem
+rolagem horizontal. Nenhuma dependência foi adicionada.
+
+Para executar os testes de renderização, na pasta `frontend`:
+`node tests/run-process-readonly.mjs`.
 
 Mensagem sugerida: `feat(mapping): apresenta etapas em modo somente leitura`
 

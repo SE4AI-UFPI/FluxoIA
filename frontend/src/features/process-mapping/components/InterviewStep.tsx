@@ -15,17 +15,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { InterviewQuestion } from '../services/interview.service'
 import type { InterviewAnswerKey } from '../types/process.types'
+import { InterviewReadOnly } from './ProcessReadOnly'
 
-export function InterviewStep({
-  questions,
-  answers,
-  questionIndex,
-  onAnswer,
-  onQuestionChange,
-  onBack,
-  onSave,
-  onFinish,
-}: {
+type InterviewStepProps = {
   questions: InterviewQuestion[]
   answers: Record<InterviewAnswerKey, string>
   questionIndex: number
@@ -34,7 +26,24 @@ export function InterviewStep({
   onBack: () => void
   onSave: () => void
   onFinish: () => void
-}) {
+  readOnly?: boolean
+}
+
+export function InterviewStep(props: InterviewStepProps) {
+  if (props.readOnly) return <InterviewReadOnly questions={props.questions} answers={props.answers} />
+  return <EditableInterviewStep {...props} />
+}
+
+function EditableInterviewStep({
+  questions,
+  answers,
+  questionIndex,
+  onAnswer,
+  onQuestionChange,
+  onBack,
+  onSave,
+  onFinish,
+}: InterviewStepProps) {
   const currentQuestions = questions.length > 0 ? questions : []
   
   const [inputText, setInputText] = React.useState('')

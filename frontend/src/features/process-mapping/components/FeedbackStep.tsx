@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import type {
-  EditLevelRequired,
   IdentifiedProblemTag,
   ProcessFeedback,
   ProcessWizardState,
@@ -14,21 +13,8 @@ import { BPMNEditor } from './BPMNEditor'
 import { ProcessFichaTecnicaCards } from './ProcessFichaTecnicaCards'
 import { ProcessStatus } from './ProcessStatus'
 import { VersionHistory } from './VersionHistory'
-
-const EDIT_LEVEL_OPTIONS: Array<{ value: EditLevelRequired; label: string }> = [
-  { value: 'nenhuma', label: 'Pronto de primeira, sem ajustes' },
-  { value: 'pequenos_ajustes', label: 'Pequenos ajustes de nomes ou textos' },
-  { value: 'ajustes_moderados', label: 'Ajustes em etapas, raias ou decisões' },
-  { value: 'reconstrucao', label: 'Precisou refazer grande parte do fluxo' },
-]
-
-const PROBLEM_TAG_OPTIONS: Array<{ value: IdentifiedProblemTag; label: string }> = [
-  { value: 'etapas_ausentes', label: 'Etapas ausentes' },
-  { value: 'raias_incorretas', label: 'Raias / setores incorretos' },
-  { value: 'decisoes_incorretas', label: 'Pontos de decisão / desvios' },
-  { value: 'sequencia_incorreta', label: 'Ordem / sequência das atividades' },
-  { value: 'aprovacoes_ausentes', label: 'Aprovações de chefia' },
-]
+import { FeedbackReadOnly } from './FeedbackReadOnly'
+import { EDIT_LEVEL_OPTIONS, PROBLEM_TAG_OPTIONS } from '../services/process-feedback.options'
 
 function ScoreButtons({
   label,
@@ -272,7 +258,7 @@ export function FeedbackStep({
             <div><p className="text-[11px] text-fx-cinza">Código do Processo</p><p className="mt-1 font-mono text-sm font-semibold text-fx-marinho">{process.code}</p></div>
             <div><p className="text-[11px] text-fx-cinza">Versão</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.version}</p></div>
             <div><p className="text-[11px] text-fx-cinza">Data de Envio</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.sentAt ? new Date(process.sentAt).toLocaleString('pt-BR') : new Date(process.updatedAt).toLocaleString('pt-BR')}</p></div>
-            <div><p className="text-[11px] text-fx-cinza">Nota de Precisão IA</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{feedback.accuracyScore} / 5</p></div>
+            <div><p className="text-[11px] text-fx-cinza">Nota de Precisão IA</p><p className="mt-1 text-sm font-semibold text-fx-marinho">{process.hasSavedFeedback ? `${feedback.accuracyScore} / 5` : 'Não disponível'}</p></div>
           </CardContent>
         </Card>
 
@@ -297,6 +283,7 @@ export function FeedbackStep({
           </Card>
         )}
 
+        <FeedbackReadOnly feedback={feedback} hasSavedFeedback={process.hasSavedFeedback} />
         <VersionHistory entries={process.history} />
         <Button type="button" onClick={onNewProcess}>Iniciar outro processo</Button>
       </div>

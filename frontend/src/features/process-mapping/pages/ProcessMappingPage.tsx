@@ -314,6 +314,7 @@ export function ProcessMappingPage() {
 
         {process.step === 1 && (
           <ProcessInfoStep
+            readOnly={isLocked}
             info={process.info}
             sectors={wizard.allowedSectors}
             errors={infoErrors}
@@ -325,6 +326,7 @@ export function ProcessMappingPage() {
         )}
         {process.step === 2 && (
           <InterviewStep
+            readOnly={isLocked}
             questions={questions}
             answers={process.answers}
             questionIndex={process.questionIndex}
