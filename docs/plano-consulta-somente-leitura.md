@@ -83,7 +83,7 @@ Mensagem sugerida: `feat(mapping): apresenta etapas em modo somente leitura`
 
 ## Fase 4 — Liberar a navegação de consulta
 
-Pendente.
+Implementada, aguardando auditoria e commit.
 
 - Separar a etapa exibida localmente da etapa persistida do processo.
 - Permitir navegar pelas etapas de processos enviados, aprovados e publicados.
@@ -94,4 +94,35 @@ Pendente.
   requisições de escrita; verificar também a edição normal de rascunhos e
   processos devolvidos para correção.
 
-Mensagem sugerida: `feat(mapping): libera consulta das etapas apos validacao`
+A etapa consultada fica apenas no estado local da navegação. O indicador de
+progresso continua usando a etapa persistida como referência, mesmo quando o
+autor volta para uma etapa anterior. A interface oferece seleção direta e
+botões de etapa anterior/próxima, com foco transferido para o conteúdo exibido.
+
+Em processos aguardando validação, aprovados ou publicados, a abertura e a
+navegação não executam autosave, sincronização ou organização automática do
+BPMN. Os comandos de alteração também são bloqueados no hook. A geração e o
+salvamento de layout ficam ocultos na consulta, mantendo visualização e
+exportação. A entrevista de outro autor recebe uma indicação de acesso restrito,
+sem apresentar respostas vazias como se fossem os dados originais.
+
+Enquanto carrega, a página apresenta um estado de espera. Em caso de falha,
+mostra o erro e permite tentar novamente; não apresenta um rascunho local como
+substituto do processo solicitado. Respostas de uma URL anterior são ignoradas
+quando a navegação muda durante o carregamento.
+
+Validação: oito testes de integração no navegador passaram, com API e
+armazenamento simulados, incluindo os três estados bloqueados, rascunho,
+correção solicitada, falha e nova tentativa, outro autor e troca de URL. Os
+testes verificam os comandos de escrita, os dados e a data de atualização, além
+de confirmar a etapa persistida após reabertura. Seis testes de renderização e
+oito testes de regressão da avaliação/PDF também passaram. Build aprovado e lint
+com zero erros e 22 avisos. A navegação completa foi conferida visualmente em
+desktop e em viewport de 375 px, sem rolagem horizontal.
+
+Para repetir os testes de integração: iniciar `npm run dev` na pasta `frontend`
+e abrir `http://localhost:5173/tests/wizard-consultation.html`. A página executa
+os testes automaticamente e mostra os resultados; não acessa a API real nem
+grava no armazenamento da aplicação.
+
+Mensagem sugerida: `feat(mapping): libera consulta das etapas apos envio`

@@ -454,7 +454,7 @@ export function BPMNEditor({
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Desfazer
             </Button>
           )}
-          <Button
+          {statusPermiteEdicao && <Button
             type="button"
             size="sm"
             className="ml-auto"
@@ -468,7 +468,7 @@ export function BPMNEditor({
               <Save className="mr-1 h-3.5 w-3.5" />
             )}
             Salvar Ajustes
-          </Button>
+          </Button>}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">

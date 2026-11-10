@@ -11,17 +11,19 @@ export function ProcessWizard({
   currentStep,
   onSelectStep,
   disabled = false,
+  completedThrough = currentStep,
 }: {
   currentStep: ProcessStep
   onSelectStep?: (step: ProcessStep) => void
   disabled?: boolean
+  completedThrough?: ProcessStep
 }) {
   return (
     <nav aria-label="Etapas do mapeamento">
       <ol className="grid gap-2 sm:grid-cols-4 sm:gap-3">
         {PROCESS_STEPS.map(({ id, label }) => {
           const current = currentStep === id
-          const completed = currentStep > id
+          const completed = completedThrough > id
           const clickable = Boolean(onSelectStep) && !disabled && !current
 
           return (
@@ -36,7 +38,7 @@ export function ProcessWizard({
                     : completed
                       ? 'border-fx-sucesso/40 bg-fx-sucesso/10 text-fx-marinho hover:bg-fx-sucesso/20'
                       : 'border-fx-linha bg-fx-papel text-fx-cinza hover:bg-fx-nevoa/30'
-                } ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+                } ${clickable ? 'cursor-pointer' : 'cursor-default'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul focus-visible:ring-offset-2`}
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] ${

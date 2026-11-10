@@ -202,6 +202,7 @@ function FeedbackFields({
 
 export function FeedbackStep({
   process,
+  readOnly = false,
   feedback,
   onFeedbackChange,
   onBack,
@@ -214,6 +215,7 @@ export function FeedbackStep({
   submissionError = null,
 }: {
   process: ProcessWizardState
+  readOnly?: boolean
   feedback: ProcessFeedback
   onFeedbackChange: <Key extends keyof ProcessFeedback>(key: Key, value: ProcessFeedback[Key]) => void
   onBack: () => void
@@ -231,18 +233,18 @@ export function FeedbackStep({
     process.status === 'Aprovado' ||
     process.status === 'Publicado'
 
-  if (submitted) {
+  if (submitted || readOnly) {
     const statusTitle =
       process.status === 'Publicado'
         ? 'Processo publicado institucionalmente'
         : process.status === 'Aprovado'
           ? 'Processo homologado pela supervisão'
-          : 'Processo encaminhado para validação'
+          : submitted ? 'Processo encaminhado para validação' : 'Consulta do mapeamento'
 
     const statusDescription =
       process.status === 'Publicado' || process.status === 'Aprovado'
         ? 'Este fluxo já foi homologado pela governança e encontra-se bloqueado para edições.'
-        : 'O fluxo e a avaliação da IA foram confirmados e aguardam análise do supervisor.'
+        : submitted ? 'O fluxo e a avaliação da IA foram confirmados e aguardam análise do supervisor.' : 'Somente leitura · Dados registrados pelo autor do mapeamento.'
 
     return (
       <div className="space-y-5">
@@ -276,6 +278,7 @@ export function FeedbackStep({
                 filename={process.code ?? 'processo-bpmn'}
                 processName={process.info.name}
                 status={process.status}
+                readOnly
                 isSaving={false}
                 onSaveLayout={onSaveLayout}
               />

@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, ArrowLeft, Check, Save, Trash2 } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Save, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
@@ -56,6 +56,14 @@ export function ProcessMappingPage() {
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [questions, setQuestions] = React.useState<InterviewQuestion[]>(FALLBACK_INTERVIEW_QUESTIONS)
   const wizard = useProcessWizard(user ?? EMPTY_USER)
+  const stepContentRef = React.useRef<HTMLElement>(null)
+  const focusStepRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    if (!focusStepRef.current) return
+    focusStepRef.current = false
+    stepContentRef.current?.focus({ preventScroll: true })
+  }, [wizard.viewedStep])
 
   React.useEffect(() => {
     let active = true
@@ -70,6 +78,27 @@ export function ProcessMappingPage() {
   }, [])
 
   if (!user) return null
+
+  if (wizard.isLoadingProcess || wizard.loadError) {
+    return (
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-8 text-fx-grafite">
+        <h1 className="font-serif text-2xl font-semibold text-fx-marinho">Mapeamento de Processos</h1>
+        {wizard.isLoadingProcess ? (
+          <p role="status">Carregando processo…</p>
+        ) : (
+          <div role="alert" className="space-y-2">
+            <p className="font-semibold">Não foi possível abrir o processo.</p>
+            <p>{wizard.loadError}</p>
+            <p>Confira sua conexão e se você tem acesso a este processo.</p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => navigate('/')}>Voltar ao painel</Button>
+          {wizard.loadError && <Button onClick={wizard.retryLoad}>Tentar novamente</Button>}
+        </div>
+      </main>
+    )
+  }
 
   const { process } = wizard
 
@@ -152,13 +181,16 @@ export function ProcessMappingPage() {
     setPageError(null)
   }
 
-  const isLocked =
-    process.status === 'Aguardando Validação do Gestor' ||
-    process.status === 'Aprovado' ||
-    process.status === 'Publicado'
+  const isLocked = wizard.isReadOnly
 
   function handleSelectWizardStep(targetStep: ProcessStep) {
-    if (isLocked) return
+    if (isLocked) {
+      focusStepRef.current = true
+      wizard.selectConsultationStep(targetStep)
+      setPageError(null)
+      setNotice(null)
+      return
+    }
     if (targetStep === 1) {
       changeStep(1, process.status === 'Ajustes Solicitados' ? 'Ajustes Solicitados' : 'Rascunho')
       return
@@ -228,7 +260,7 @@ export function ProcessMappingPage() {
           </div>
           <div className="flex items-center gap-2">
             <ProcessStatus status={process.status} />
-            {canDeleteProcess(process.status) && Boolean(process.backendId || wizard.lastSavedAt) && (
+            {!isLocked && canDeleteProcess(process.status) && Boolean(process.backendId || wizard.lastSavedAt) && (
               <Button
                 type="button"
                 variant="destructive"
@@ -252,10 +284,16 @@ export function ProcessMappingPage() {
         </div>
 
         <ProcessWizard
-          currentStep={process.step}
+          currentStep={wizard.viewedStep}
+          completedThrough={isLocked ? process.step : undefined}
           onSelectStep={handleSelectWizardStep}
-          disabled={isLocked}
         />
+
+        {isLocked && (
+          <p className="text-sm leading-relaxed text-fx-marinho">
+            Somente leitura. Selecione uma etapa para consultar os dados registrados. O processo permanece com o status “{process.status}”.
+          </p>
+        )}
 
         {latestAdjustmentNote && (
           <div
@@ -312,7 +350,8 @@ export function ProcessMappingPage() {
           </div>
         )}
 
-        {process.step === 1 && (
+        <section ref={stepContentRef} tabIndex={-1} aria-label="Conteúdo da etapa selecionada" className="space-y-5 focus-visible:outline-2 focus-visible:outline-fx-azul">
+        {wizard.viewedStep === 1 && (
           <ProcessInfoStep
             readOnly={isLocked}
             info={process.info}
@@ -324,7 +363,9 @@ export function ProcessMappingPage() {
             onNext={continueToInterview}
           />
         )}
-        {process.step === 2 && (
+        {wizard.viewedStep === 2 && (process.ownerId !== user.id ? (
+          <p className="rounded-sm border border-fx-linha bg-fx-papel p-5 text-sm text-fx-grafite">A entrevista só pode ser consultada pelo autor do mapeamento.</p>
+        ) : (
           <InterviewStep
             readOnly={isLocked}
             questions={questions}
@@ -336,9 +377,10 @@ export function ProcessMappingPage() {
             onSave={saveDraft}
             onFinish={finishInterview}
           />
-        )}
-        {process.step === 3 && (
+        ))}
+        {wizard.viewedStep === 3 && (
           <BPMNGenerationStep
+            readOnly={isLocked}
             process={process}
             lastSavedAt={wizard.lastSavedAt}
             isGenerating={wizard.isGeneratingBpmn}
@@ -352,8 +394,9 @@ export function ProcessMappingPage() {
             onSaveLayout={wizard.saveBpmnLayout}
           />
         )}
-        {process.step === 4 && (
+        {wizard.viewedStep === 4 && (
           <FeedbackStep
+            readOnly={isLocked}
             process={process}
             feedback={process.feedback}
             onFeedbackChange={wizard.updateFeedback}
@@ -374,10 +417,22 @@ export function ProcessMappingPage() {
             submissionError={wizard.submissionError}
           />
         )}
+        </section>
+
+        {isLocked && (
+          <div className="flex flex-wrap justify-between gap-3">
+            <Button variant="outline" disabled={wizard.viewedStep === 1} onClick={() => handleSelectWizardStep((wizard.viewedStep - 1) as ProcessStep)}>
+              <ArrowLeft className="h-4 w-4" /> Etapa anterior
+            </Button>
+            <Button variant="outline" disabled={wizard.viewedStep === 4} onClick={() => handleSelectWizardStep((wizard.viewedStep + 1) as ProcessStep)}>
+              Próxima etapa <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-fx-linha/70 pt-3 text-xs text-fx-cinza">
           <span>UFPI · FÁBRICA DE IA DO PIAUÍ · SECTI</span>
-          <span>Rascunhos armazenados nesta sessão do navegador</span>
+          <span>{isLocked ? 'Consulta sem alteração dos dados registrados' : 'Rascunhos armazenados nesta sessão do navegador'}</span>
         </footer>
       </main>
       <ProcessDeletionDialog

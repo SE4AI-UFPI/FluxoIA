@@ -22,6 +22,7 @@ import type { ProcessWizardState } from '../types/process.types'
 
 export function BPMNGenerationStep({
   process,
+  readOnly = false,
   lastSavedAt,
   isGenerating = false,
   generationError = null,
@@ -34,6 +35,7 @@ export function BPMNGenerationStep({
   onSaveLayout,
 }: {
   process: ProcessWizardState
+  readOnly?: boolean
   lastSavedAt: string | null
   isGenerating?: boolean
   generationError?: string | null
@@ -159,10 +161,15 @@ export function BPMNGenerationStep({
               filename={process.code ?? 'processo-bpmn'}
               processName={process.info.name}
               status={process.status}
+              readOnly={readOnly}
               isSaving={isSavingLayout}
               onSaveLayout={onSaveLayout}
             />
           </CardContent>
+        </Card>
+      ) : readOnly ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-fx-grafite">Não há diagrama BPMN disponível para consulta.</CardContent>
         </Card>
       ) : (
         <Card className="border-dashed border-fx-azul/40 bg-fx-nevoa/20">
@@ -218,7 +225,7 @@ export function BPMNGenerationStep({
       )}
 
       {/* Avaliação da geração da IA — abaixo da ficha técnica e do diagrama */}
-      {process.bpmnXml && (
+      {process.bpmnXml && !readOnly && (
         <Card>
           <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
