@@ -8,6 +8,7 @@ import {
   hasRequiredProcessInfo,
   loadProcessDraft,
   mapApiProcessoToWizardState,
+  resolveWizardStatus,
   reuseLocalDraftId,
   saveBpmnVersionToApi,
   saveBpmnLayoutToApi,
@@ -159,7 +160,7 @@ export function useProcessWizard(user: Usuario) {
 
         // Reorganiza automaticamente o DI ao abrir em modo best-effort.
         if (!editable) return
-        void aplicarLayoutAutomatico(mapped, apiProcesso.id)
+        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
           .then((normalizado) => {
             if (cancellation.signal.aborted || normalizado === mapped) return
             setProcess(normalizado)
@@ -215,7 +216,7 @@ export function useProcessWizard(user: Usuario) {
     setProcess((current) => ({
       ...current,
       info: { ...current.info, [key]: value },
-      status: current.step === 1 ? 'Rascunho' : current.status,
+      status: resolveWizardStatus(current.status, 'Rascunho'),
     }))
   }
 
@@ -224,7 +225,7 @@ export function useProcessWizard(user: Usuario) {
     setProcess((current) => ({
       ...current,
       answers: { ...current.answers, [key]: value },
-      status: 'Em Entrevista',
+      status: resolveWizardStatus(current.status, 'Em Entrevista'),
     }))
   }
 
@@ -240,7 +241,7 @@ export function useProcessWizard(user: Usuario) {
 
   function setStep(step: ProcessStep, status: ProcessWizardState['status']) {
     if (!canMutate) return
-    const nextState: ProcessWizardState = { ...process, step, status }
+    const nextState: ProcessWizardState = { ...process, step, status: resolveWizardStatus(process.status, status) }
     setProcess(nextState)
     void persistToBackend(nextState)
   }
@@ -273,7 +274,7 @@ export function useProcessWizard(user: Usuario) {
       const nextState: ProcessWizardState = {
         ...estadoComLayout,
         step: 3,
-        status: 'Em Modelagem BPMN',
+        status: resolveWizardStatus(process.status, 'Em Modelagem BPMN'),
       }
       setProcess(nextState)
       saveProcessDraft(nextState)
@@ -341,7 +342,7 @@ export function useProcessWizard(user: Usuario) {
       ...process,
       step: 2,
       questionIndex: 0,
-      status: 'Em Entrevista',
+      status: resolveWizardStatus(process.status, 'Em Entrevista'),
       history: [...process.history, historyEntry],
     }
     setProcess(nextState)

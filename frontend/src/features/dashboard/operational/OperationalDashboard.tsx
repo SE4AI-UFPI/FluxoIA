@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import {
   fetchProcessosFromApi,
+  getLatestGovernanceReview,
   type ApiProcesso,
 } from '@/features/process-mapping/services/process.service'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
@@ -30,24 +31,39 @@ import {
 } from './processes.demo'
 
 const STATUS_VARIANT: Record<ProcessoStatus, 'default' | 'secondary' | 'success' | 'warning'> = {
+  Rascunho: 'secondary',
   'Em Entrevista': 'secondary',
   'Em Modelagem': 'secondary',
   'Em Revisão': 'warning',
+  'Ajustes Solicitados': 'warning',
   'Aguardando Aprovação': 'default',
   Aprovado: 'success',
   Publicado: 'success',
 }
 
-function mapApiStatusToDashboardStatus(status: ApiProcesso['status']): ProcessoStatus {
+function mapApiStatusToDashboardStatus(item: ApiProcesso): ProcessoStatus {
+  const status = item.status
+  if (status === 'rascunho' || status === 'em_entrevista' || status === 'ajustes_solicitados') {
+    const ultimaRevisao = getLatestGovernanceReview(item.revisoes_governanca)
+    if (
+      ultimaRevisao &&
+      (ultimaRevisao.decisao === 'ajustes_solicitados' || ultimaRevisao.decisao === 'rejeitado')
+    ) {
+      return 'Ajustes Solicitados'
+    }
+  }
+
   switch (status) {
     case 'rascunho':
+      return 'Rascunho'
     case 'em_entrevista':
       return 'Em Entrevista'
     case 'em_modelagem':
       return 'Em Modelagem'
     case 'em_avaliacao':
-    case 'ajustes_solicitados':
       return 'Em Revisão'
+    case 'ajustes_solicitados':
+      return 'Ajustes Solicitados'
     case 'aguardando_validacao':
       return 'Aguardando Aprovação'
     case 'aprovado':
@@ -55,7 +71,7 @@ function mapApiStatusToDashboardStatus(status: ApiProcesso['status']): ProcessoS
     case 'publicado':
       return 'Publicado'
     default:
-      return 'Em Entrevista'
+      return 'Rascunho'
   }
 }
 
@@ -76,7 +92,7 @@ function mapApiProcessoToResumo(item: ApiProcesso): ProcessoResumo {
     nome: item.nome,
     setor: item.setor || 'Não informado',
     ultimaAtualizacao: formattedDate,
-    status: mapApiStatusToDashboardStatus(item.status),
+    status: mapApiStatusToDashboardStatus(item),
   }
 }
 

@@ -46,35 +46,8 @@ STATUS_EXCLUSAO_PERMITIDOS = {
 STATUS_PRE_VALIDACAO = frozenset(STATUS_EXCLUSAO_PERMITIDOS)
 
 TRANSICOES_STATUS_USUARIO = {
-    StatusProcesso.RASCUNHO: {
-        StatusProcesso.RASCUNHO,
-        StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.EM_MODELAGEM,
-    },
-    StatusProcesso.EM_ENTREVISTA: {
-        StatusProcesso.RASCUNHO,
-        StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.EM_MODELAGEM,
-    },
-    StatusProcesso.EM_MODELAGEM: {
-        StatusProcesso.RASCUNHO,
-        StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.EM_MODELAGEM,
-        StatusProcesso.EM_AVALIACAO,
-    },
-    StatusProcesso.EM_AVALIACAO: {
-        StatusProcesso.RASCUNHO,
-        StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.EM_MODELAGEM,
-        StatusProcesso.EM_AVALIACAO,
-    },
-    StatusProcesso.AJUSTES_SOLICITADOS: {
-        StatusProcesso.RASCUNHO,
-        StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.EM_MODELAGEM,
-        StatusProcesso.EM_AVALIACAO,
-        StatusProcesso.AJUSTES_SOLICITADOS,
-    },
+    status_origem: set(STATUS_PRE_VALIDACAO)
+    for status_origem in STATUS_PRE_VALIDACAO
 }
 
 ETAPA_POR_STATUS = {
@@ -189,7 +162,7 @@ def atualizar_processo(*, processo: Processo, dados: dict, usuario: User) -> Pro
         raise ValidationError({'status': 'Transição de status não permitida nesta etapa do processo.'})
 
     etapa_solicitada = dados_limpos.get('etapa_atual', processo.etapa_atual)
-    if etapa_solicitada != ETAPA_POR_STATUS[novo_status]:
+    if not (1 <= etapa_solicitada <= ETAPA_POR_STATUS[novo_status]):
         raise ValidationError({'etapa_atual': 'A etapa deve corresponder ao status do processo.'})
 
     for campo, valor in dados_limpos.items():
@@ -239,7 +212,6 @@ def registrar_versao_bpmn(*, processo: Processo, usuario: User, dados: dict) -> 
     if processo.status in (
         StatusProcesso.RASCUNHO,
         StatusProcesso.EM_ENTREVISTA,
-        StatusProcesso.AJUSTES_SOLICITADOS,
     ):
         processo.status = StatusProcesso.EM_MODELAGEM
     processo.save()
@@ -294,7 +266,7 @@ def registrar_ajuste_layout_bpmn(
 def submeter_processo(*, processo: Processo, usuario: User, dados_feedback: dict) -> Processo:
     """Registra o feedback quantitativo da IA e submete o processo para validação do gestor."""
     _require_process_owner_or_admin(processo=processo, usuario=usuario)
-    if processo.status != StatusProcesso.EM_AVALIACAO:
+    if processo.status not in (StatusProcesso.EM_AVALIACAO, StatusProcesso.AJUSTES_SOLICITADOS):
         raise ValidationError({'status': 'O processo precisa estar em avaliação antes do envio.'})
 
     ultima_versao = processo.versoes_bpmn.order_by('-criado_em').first()

@@ -30,6 +30,7 @@ export function BPMNDownloads({ processo }: { processo: ProcessoBiblioteca }) {
       `Objetivo: ${processo.objetivo}`,
       `Legislação: ${processo.legislacao || '—'}`,
       `Sistemas: ${processo.sistemas.join('; ') || '—'}`,
+      `Prazos e Regras: ${processo.prazos || 'Conforme prazo regimental'}`,
       '',
       'Checklist de Documentos Exigidos:',
       ...(documentos.length > 0 ? documentos.map((doc, idx) => `  [ ] ${idx + 1}. ${doc}`) : ['  —']),

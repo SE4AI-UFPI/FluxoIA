@@ -10,6 +10,7 @@ import { BPMNReviewPanel } from '../components/BPMNReviewPanel'
 import { RevisionTimeline } from '../components/RevisionTimeline'
 import {
   alternarEstadoChecklist,
+   CHECKLIST_PADRAO,
   checklistCompleto,
   checklistTemNaoConformidade,
   ValidationChecklist,
@@ -75,12 +76,21 @@ export function ValidationPage() {
     setErroAcao(null)
     setAviso(null)
     try {
+      const itensNaoConformes = CHECKLIST_PADRAO.filter(
+        (item) => checklist[item.id] === 'nao_conforme',
+      ).map((item) => `${item.grupo}: ${item.titulo}`)
+      const prefixoChecklist =
+        itensNaoConformes.length > 0
+          ? `[Não conformidades: ${itensNaoConformes.join(' | ')}] `
+          : ''
+      const parecerComChecklist = `${prefixoChecklist}${payload.parecer.trim()}`.trim()
+
       if (payload.decisao === 'aprovado') {
         await aprovarProcesso(selecionado.id, payload.parecer || 'Fluxo homologado pela supervisão.')
       } else if (payload.decisao === 'ajustes_solicitados') {
-        await solicitarCorrecao(selecionado.id, payload.parecer)
+        await solicitarCorrecao(selecionado.id, parecerComChecklist)
       } else {
-        await devolverProcesso(selecionado.id, payload.parecer)
+        await devolverProcesso(selecionado.id, parecerComChecklist)
       }
       const mensagem =
         payload.decisao === 'aprovado'
@@ -259,7 +269,7 @@ export function ValidationPage() {
                   onDecidir={decidir}
                   enviando={enviando}
                   erro={erroAcao}
-                  desabilitado={!podeHomologar && parecer.trim().length === 0}
+                  desabilitado={!podeHomologar}
                   avisoConformidade={avisoConformidade}
                 />
               </>

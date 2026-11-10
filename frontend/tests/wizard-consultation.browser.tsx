@@ -127,12 +127,23 @@ try {
       await settle()
       expect(wizard.process.info.name === 'Nome revisado', 'Dados iniciais não foram editados')
       expect(wizard.process.answers.trigger === 'Resposta revisada', 'Resposta não foi editada')
+      if (status === 'ajustes_solicitados') expect(wizard.process.status === 'Ajustes Solicitados', 'Editar respostas apagou o status de correção')
       expect(storageWrites > 0, 'Autosave de processo editável deixou de funcionar')
       await act(async () => wizard.setStep(2, 'Em Entrevista'))
       expect(wizard.viewedStep === 2 && wizard.process.step === 2, 'Navegação editável não persistiu a etapa')
+      if (status === 'ajustes_solicitados') expect(wizard.process.status === 'Ajustes Solicitados', 'Voltar uma etapa apagou o status de correção')
       expect(requests.some(request => request.method === 'PATCH'), 'Navegação editável não sincronizou')
     })
   }
+
+  await test('Revisar dados e respostas mantém o status de avaliação', async () => {
+    reply = () => response(fixture('em_avaliacao'))
+    await mount()
+    await act(async () => { wizard.updateInfo('name', 'Nome revisado'); wizard.updateAnswer('trigger', 'Resposta revisada') })
+    expect(wizard.process.status === 'Em Avaliação', 'Editar dados regrediu o status')
+    await act(async () => wizard.setStep(2, 'Em Entrevista'))
+    expect(wizard.viewedStep === 2 && wizard.process.status === 'Em Avaliação', 'Navegar para entrevista regrediu o status')
+  })
 
   await test('Falha de leitura bloqueia alterações e permite tentar novamente', async () => {
     reply = () => response({ detail: 'Processo indisponível' }, 403)

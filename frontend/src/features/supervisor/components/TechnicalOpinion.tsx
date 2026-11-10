@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AlertCircle, CheckCircle2, Loader2, RotateCcw, Undo2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -14,7 +14,6 @@ const ACOES: Array<{
 }> = [
   { decisao: 'aprovado', label: 'Aprovar e Homologar', variant: 'default', icone: CheckCircle2, exigeParecer: false },
   { decisao: 'ajustes_solicitados', label: 'Solicitar Correção', variant: 'outline', icone: RotateCcw, exigeParecer: true },
-  { decisao: 'rejeitado', label: 'Devolver para Refazer', variant: 'destructive', icone: Undo2, exigeParecer: true },
 ]
 
 export function TechnicalOpinion({
@@ -85,7 +84,7 @@ export function TechnicalOpinion({
               key={decisao}
               type="button"
               variant={variant}
-              disabled={enviando || desabilitado}
+              disabled={enviando || (decisao === 'aprovado' && desabilitado)}
               onClick={() => decidir(decisao, exigeParecer)}
             >
               {enviando ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Icone className="mr-1.5 h-4 w-4" />}

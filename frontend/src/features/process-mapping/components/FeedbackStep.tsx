@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertCircle, ArrowLeft, Check, ChevronDown, ClipboardCheck, RotateCcw } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Check, ChevronDown, ClipboardCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -206,7 +206,6 @@ export function FeedbackStep({
   feedback,
   onFeedbackChange,
   onBack,
-  onRegenerate,
   onConfirm,
   onNewProcess,
   onSaveLayout,
@@ -219,7 +218,6 @@ export function FeedbackStep({
   feedback: ProcessFeedback
   onFeedbackChange: <Key extends keyof ProcessFeedback>(key: Key, value: ProcessFeedback[Key]) => void
   onBack: () => void
-  onRegenerate: () => void
   onConfirm: () => void
   onNewProcess: () => void
   onSaveLayout: (xml: string) => Promise<void> | void
@@ -423,10 +421,7 @@ export function FeedbackStep({
       <VersionHistory entries={process.history} />
       <div className="flex flex-col-reverse gap-2 border-t border-fx-linha/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="outline" onClick={onBack}><ArrowLeft className="h-4 w-4" /> Voltar ao BPMN</Button>
-        <div className="grid gap-2 sm:flex">
-          <Button type="button" variant="outline" onClick={onRegenerate}><RotateCcw className="h-4 w-4" /> Solicitar Regeneração</Button>
-          <Button type="button" onClick={onConfirm}><Check className="h-4 w-4" /> Confirmar Fluxo</Button>
-        </div>
+        <Button type="button" onClick={onConfirm}><Check className="h-4 w-4" /> Confirmar Fluxo</Button>
       </div>
     </div>
   )
