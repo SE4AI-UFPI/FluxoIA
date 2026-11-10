@@ -127,13 +127,17 @@ function normatizarXml(xml: string): string {
 export function BPMNEditor({
   xml,
   filename,
+  processName,
   status,
+  readOnly = false,
   isSaving = false,
   onSaveLayout,
 }: {
   xml: string
   filename: string
+  processName?: string
   status: ProcessStatus
+  readOnly?: boolean
   isSaving?: boolean
   onSaveLayout: (xml: string) => Promise<void> | void
 }) {
@@ -143,7 +147,7 @@ export function BPMNEditor({
   const xmlRef = React.useRef<string>(xml)
 
   const isSmallScreen = useIsSmallScreen()
-  const statusPermiteEdicao = canEditBpmnLayout(status)
+  const statusPermiteEdicao = !readOnly && canEditBpmnLayout(status)
   const edicaoDisponivel = statusPermiteEdicao && !isSmallScreen
 
   const [isEditing, setIsEditing] = React.useState(false)
@@ -439,25 +443,15 @@ export function BPMNEditor({
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
       URL.revokeObjectURL(svgUrl)
 
-      const { jsPDF } = await import('jspdf')
-      const pdf = new jsPDF({
-        orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
-        unit: 'pt',
-        format: 'a4',
+      const { createBpmnPdf } = await import('../services/bpmn-pdf.service')
+      const pdf = createBpmnPdf({
+        diagramImage: canvas.toDataURL('image/png'),
+        diagramWidth: canvas.width,
+        diagramHeight: canvas.height,
+        title: processName ?? filename,
+        code: filename,
+        status,
       })
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const pageHeight = pdf.internal.pageSize.getHeight()
-      const scale = Math.min((pageWidth - 48) / canvas.width, (pageHeight - 48) / canvas.height)
-      const width = canvas.width * scale
-      const height = canvas.height * scale
-      pdf.addImage(
-        canvas.toDataURL('image/png'),
-        'PNG',
-        (pageWidth - width) / 2,
-        (pageHeight - height) / 2,
-        width,
-        height,
-      )
       downloadBlob(`${filename}.pdf`, pdf.output('blob'))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível exportar o PDF.')
@@ -553,7 +547,7 @@ export function BPMNEditor({
               <Undo2 className="mr-1 h-3.5 w-3.5" /> Desfazer
             </Button>
           )}
-          <Button
+          {statusPermiteEdicao && <Button
             type="button"
             size="sm"
             className="ml-auto"
@@ -567,7 +561,7 @@ export function BPMNEditor({
               <Save className="mr-1 h-3.5 w-3.5" />
             )}
             Salvar Ajustes
-          </Button>
+          </Button>}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -600,25 +594,22 @@ export function BPMNEditor({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
               aria-label="Baixar SVG"
               title="Baixar SVG"
               onClick={() => void exportSvg()}
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-4 w-4" aria-hidden="true" /> SVG
             </Button>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
               aria-label="Baixar PDF"
               title="Baixar PDF"
               onClick={() => void exportPdf()}
             >
-              <FileDown className="h-4 w-4" />
+              <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
             </Button>
           </div>
         </div>
@@ -626,7 +617,7 @@ export function BPMNEditor({
 
       {!statusPermiteEdicao && (
         <p className="rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-2 text-xs text-fx-cinza">
-          {MOTIVO_BLOQUEIO_EDICAO}
+          {readOnly ? 'Este diagrama está disponível somente para consulta.' : MOTIVO_BLOQUEIO_EDICAO}
         </p>
       )}
       {statusPermiteEdicao && isSmallScreen && (

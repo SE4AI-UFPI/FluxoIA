@@ -401,6 +401,18 @@ class ProcessoSerializer(serializers.ModelSerializer):
             'exclusao',
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        usuario = getattr(request, 'user', None)
+        if not (
+            usuario is not None
+            and usuario.is_authenticated
+            and usuario.pk == instance.criado_por_id
+        ):
+            data.pop('entrevista', None)
+        return data
+
     def get_bpmn_xml_atual(self, obj: Processo) -> str | None:
         versoes = list(obj.versoes_bpmn.all())
         if not versoes:

@@ -15,17 +15,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { InterviewQuestion } from '../services/interview.service'
 import type { InterviewAnswerKey } from '../types/process.types'
+import { InterviewReadOnly } from './ProcessReadOnly'
+import type { InterviewExportContext } from '../services/interview-export.service'
+import { InterviewExportButtons } from './InterviewExportButtons'
 
-export function InterviewStep({
-  questions,
-  answers,
-  questionIndex,
-  onAnswer,
-  onQuestionChange,
-  onBack,
-  onSave,
-  onFinish,
-}: {
+type InterviewStepProps = {
   questions: InterviewQuestion[]
   answers: Record<InterviewAnswerKey, string>
   questionIndex: number
@@ -34,18 +28,60 @@ export function InterviewStep({
   onBack: () => void
   onSave: () => void
   onFinish: () => void
-}) {
+  readOnly?: boolean
+  exportContext?: InterviewExportContext
+}
+
+export function InterviewStep(props: InterviewStepProps) {
+  if (props.readOnly) return <InterviewReadOnly questions={props.questions} answers={props.answers} exportContext={props.exportContext} />
+  return <EditableInterviewStep {...props} />
+}
+
+function EditableInterviewStep({
+  exportContext,
+  questions,
+  answers,
+  questionIndex,
+  onAnswer,
+  onQuestionChange,
+  onBack,
+  onSave,
+  onFinish,
+}: InterviewStepProps) {
   const currentQuestions = questions.length > 0 ? questions : []
   
   const [inputText, setInputText] = React.useState('')
   const [editingKey, setEditingKey] = React.useState<InterviewAnswerKey | null>(null)
+  const [revealedQuestionId, setRevealedQuestionId] = React.useState<InterviewAnswerKey | null>(null)
 
   const chatContainerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
+  const finishButtonRef = React.useRef<HTMLButtonElement>(null)
+  const focusAfterAnswerRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    if (!focusAfterAnswerRef.current) return
+    focusAfterAnswerRef.current = false
+    const nextControl = finishButtonRef.current ?? inputRef.current
+    nextControl?.focus({ preventScroll: true })
+  })
 
   // Determina qual é a pergunta atual na fila
   const currentQuestionIndex = Math.min(Math.max(0, questionIndex), Math.max(0, currentQuestions.length - 1))
   const currentQuestion = currentQuestions[currentQuestionIndex]
+  const currentQuestionId = currentQuestion?.id
+  const hasCurrentAnswer = Boolean(currentQuestionId && answers[currentQuestionId]?.trim())
+  const isTyping = Boolean(
+    currentQuestionId && !hasCurrentAnswer && revealedQuestionId !== currentQuestionId,
+  )
+
+  React.useEffect(() => {
+    if (!currentQuestionId || hasCurrentAnswer) return
+
+    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 450
+    const timeout = window.setTimeout(() => setRevealedQuestionId(currentQuestionId), delay)
+    return () => window.clearTimeout(timeout)
+  }, [currentQuestionId, hasCurrentAnswer])
 
   // Iniciar edição de uma pergunta
   function startEditing(key: InterviewAnswerKey) {
@@ -74,7 +110,7 @@ export function InterviewStep({
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
     }
-  }, [currentQuestionIndex, answers])
+  }, [currentQuestionIndex, answers, isTyping])
 
   if (!currentQuestion) {
     return (
@@ -99,6 +135,7 @@ export function InterviewStep({
 
   // Envio de resposta
   function handleSend() {
+    if (isTyping && !editingKey) return
     const targetKey = editingKey || currentQuestion.id
     const trimmed = inputText.trim()
 
@@ -106,6 +143,7 @@ export function InterviewStep({
       return
     }
 
+    focusAfterAnswerRef.current = true
     onAnswer(targetKey, trimmed)
 
     if (editingKey) {
@@ -121,7 +159,8 @@ export function InterviewStep({
   }
 
   function handleSkip() {
-    if (currentQuestion.required) return
+    if (isTyping || currentQuestion.required) return
+    focusAfterAnswerRef.current = true
     if (!answers[currentQuestion.id]) {
       onAnswer(currentQuestion.id, '')
     }
@@ -138,10 +177,17 @@ export function InterviewStep({
   }
 
   // Lista de mensagens até a pergunta atual
-  const visibleQuestions = currentQuestions.slice(0, currentQuestionIndex + 1)
+  const visibleQuestions = currentQuestions.slice(0, currentQuestionIndex + (isTyping ? 0 : 1))
 
   return (
     <Card className="flex flex-col border-fx-linha bg-fx-papel shadow-sm overflow-hidden">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {isInterviewComplete
+          ? 'Entrevista concluída. Você pode finalizar ou editar as respostas.'
+          : isTyping
+            ? 'Assistente preparando a próxima pergunta'
+            : `Pergunta ${currentQuestionIndex + 1} de ${currentQuestions.length}. ${currentQuestion.title}. ${currentQuestion.prompt}`}
+      </p>
       {/* Cabeçalho do Chat com Progresso */}
       <CardHeader className="border-b border-fx-linha/70 pb-4 bg-fx-fundo/40">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -168,6 +214,7 @@ export function InterviewStep({
             </div>
           </div>
         </div>
+        {exportContext && <InterviewExportButtons data={{ questions, answers, context: exportContext }} />}
       </CardHeader>
 
       {/* Feed Contínuo do Chat */}
@@ -256,6 +303,25 @@ export function InterviewStep({
               </div>
             )
           })}
+          {isTyping && (
+            <div className="flex max-w-[85%] items-start gap-3" aria-hidden="true">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white px-4 py-3.5 shadow-xs">
+                <span className="sr-only">Assistente preparando a próxima pergunta</span>
+                <span className="flex items-center gap-1.5" aria-hidden="true">
+                  {[0, 120, 240].map((delay) => (
+                    <span
+                      key={delay}
+                      className="h-2 w-2 rounded-full bg-fx-azul motion-safe:animate-pulse"
+                      style={{ animationDelay: `${delay}ms`, animationDuration: '900ms' }}
+                    />
+                  ))}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Barra de Entrada (Input de Chat) */}
@@ -289,7 +355,9 @@ export function InterviewStep({
               ) : (
                 <div className="mb-2 flex items-center justify-between text-xs text-fx-cinza">
                   <span>
-                    Respondendo: <strong>{currentQuestion.title}</strong> ({currentQuestionIndex + 1} de {currentQuestions.length})
+                    {isTyping ? 'Preparando a próxima pergunta...' : (
+                      <>Respondendo: <strong>{currentQuestion.title}</strong> ({currentQuestionIndex + 1} de {currentQuestions.length})</>
+                    )}
                   </span>
                   <span className="text-[11px] hidden sm:inline">Pressione <strong>Enter</strong> para enviar, <strong>Shift+Enter</strong> para quebrar linha</span>
                 </div>
@@ -299,6 +367,8 @@ export function InterviewStep({
                 <textarea
                   ref={inputRef}
                   rows={2}
+                  readOnly={isTyping && !editingKey}
+                  aria-label={editingKey ? 'Editar resposta' : 'Sua resposta'}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -322,6 +392,7 @@ export function InterviewStep({
                     variant="ghost"
                     size="sm"
                     onClick={handleSkip}
+                    disabled={isTyping}
                     className="h-10 text-xs text-fx-cinza hover:text-fx-marinho"
                     title="Pular pergunta opcional"
                   >
@@ -334,7 +405,7 @@ export function InterviewStep({
                   type="button"
                   onClick={handleSend}
                   disabled={
-                    Boolean(
+                    (isTyping && !editingKey) || Boolean(
                       currentQuestions.find((q) => q.id === (editingKey || currentQuestion.id))
                         ?.required && !inputText.trim(),
                     )
@@ -362,7 +433,7 @@ export function InterviewStep({
 
           <div className="flex items-center gap-2">
             {isInterviewComplete ? (
-              <Button type="button" onClick={onFinish} className="bg-fx-sucesso hover:bg-fx-sucesso/90 text-white">
+              <Button ref={finishButtonRef} type="button" onClick={onFinish} className="bg-fx-sucesso hover:bg-fx-sucesso/90 text-white">
                 Finalizar Entrevista e Gerar BPMN <Check className="h-4 w-4 ml-1.5" />
               </Button>
             ) : (

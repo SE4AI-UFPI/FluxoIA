@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock3,
+  Eye,
   FileCheck2,
   FilePlus2,
   ListFilter,
@@ -18,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import {
   fetchProcessosFromApi,
+  getLatestGovernanceReview,
   type ApiProcesso,
 } from '@/features/process-mapping/services/process.service'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
@@ -42,8 +44,7 @@ const STATUS_VARIANT: Record<ProcessoStatus, 'default' | 'secondary' | 'success'
 function mapApiStatusToDashboardStatus(item: ApiProcesso): ProcessoStatus {
   const status = item.status
   if (status === 'rascunho' || status === 'em_entrevista' || status === 'ajustes_solicitados') {
-    const revisoes = item.revisoes_governanca ?? []
-    const ultimaRevisao = revisoes[revisoes.length - 1]
+    const ultimaRevisao = getLatestGovernanceReview(item.revisoes_governanca)
     if (
       ultimaRevisao &&
       (ultimaRevisao.decisao === 'ajustes_solicitados' || ultimaRevisao.decisao === 'rejeitado')
@@ -102,6 +103,7 @@ function StatusBadge({ status }: { status: ProcessoStatus }) {
 function ProcessActions({ processo }: { processo: ProcessoResumo }) {
   const navigate = useNavigate()
   const query = `?processo=${encodeURIComponent(processo.id)}`
+  const readOnly = ['Aguardando Aprovação', 'Aprovado', 'Publicado'].includes(processo.status)
 
   return (
     <div className="flex items-center justify-end gap-1">
@@ -110,11 +112,11 @@ function ProcessActions({ processo }: { processo: ProcessoResumo }) {
         variant="ghost"
         size="icon"
         className="h-8 w-8"
-        aria-label={`Editar ${processo.nome}`}
-        title="Editar ou revisar processo"
+        aria-label={`${readOnly ? 'Visualizar' : 'Editar'} ${processo.nome}`}
+        title={readOnly ? 'Visualizar processo' : 'Editar ou revisar processo'}
         onClick={() => navigate(`/mapear-processo${query}`)}
       >
-        <PencilLine className="h-4 w-4" />
+        {readOnly ? <Eye className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
       </Button>
       <Button
         type="button"

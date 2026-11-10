@@ -15,6 +15,7 @@ import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from '@/features/process-mapping/components/BPMNLegenda'
+import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
 
 interface ElementoBpmn {
   x?: number
@@ -58,7 +59,12 @@ function baixarTexto(nome: string, conteudo: string, tipo: string) {
  * Visualizador BPMN institucional — SOMENTE LEITURA (NavigatedViewer, sem Modeler).
  * Toda edição permanece no módulo de Mapeamento de Processos.
  */
-export default function BPMNViewer({ xml, nomeArquivo }: { xml: string; nomeArquivo: string }) {
+export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
+  xml: string
+  nomeArquivo: string
+  nomeProcesso: string
+  status: ProcessoBiblioteca['status']
+}) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const viewerRef = React.useRef<NavigatedViewer | null>(null)
   const [carregando, setCarregando] = React.useState(true)
@@ -240,28 +246,15 @@ export default function BPMNViewer({ xml, nomeArquivo }: { xml: string; nomeArqu
       contexto.drawImage(imagem, 0, 0, canvas.width, canvas.height)
       URL.revokeObjectURL(svgUrl)
 
-      const { jsPDF } = await import('jspdf')
-      const pdf = new jsPDF({
-        orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
-        unit: 'pt',
-        format: 'a4',
+      const { createBpmnPdf } = await import('@/features/process-mapping/services/bpmn-pdf.service')
+      const pdf = createBpmnPdf({
+        diagramImage: canvas.toDataURL('image/png'),
+        diagramWidth: canvas.width,
+        diagramHeight: canvas.height,
+        title: nomeProcesso,
+        code: nomeArquivo,
+        status,
       })
-      const larguraPagina = pdf.internal.pageSize.getWidth()
-      const alturaPagina = pdf.internal.pageSize.getHeight()
-      const escala = Math.min(
-        (larguraPagina - 48) / canvas.width,
-        (alturaPagina - 48) / canvas.height,
-      )
-      const largura = canvas.width * escala
-      const altura = canvas.height * escala
-      pdf.addImage(
-        canvas.toDataURL('image/png'),
-        'PNG',
-        (larguraPagina - largura) / 2,
-        (alturaPagina - altura) / 2,
-        largura,
-        altura,
-      )
       baixarBlob(`${nomeArquivo}.pdf`, pdf.output('blob'))
     } catch (causa) {
       setErro(causa instanceof Error ? causa.message : 'Não foi possível baixar o PDF.')

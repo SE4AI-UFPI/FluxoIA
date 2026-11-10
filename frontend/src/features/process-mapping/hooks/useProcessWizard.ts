@@ -63,7 +63,7 @@ export function useProcessWizard(user: Usuario) {
   const defaultSector = allowedSectors[0] ?? SETORES_INSTITUCIONAIS[0]
 
   const [process, setProcess] = React.useState<ProcessWizardState>(() =>
-    startFresh ? createInitialProcess(user.id, defaultSector) : loadProcessDraft(user.id, defaultSector),
+    startFresh || processoQueryId ? createInitialProcess(user.id, defaultSector) : loadProcessDraft(user.id, defaultSector),
   )
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(() =>
     !startFresh && isProcessStarted(process) ? process.updatedAt : null,
@@ -73,137 +73,16 @@ export function useProcessWizard(user: Usuario) {
   const [isSavingLayout, setIsSavingLayout] = React.useState(false)
   const [layoutError, setLayoutError] = React.useState<string | null>(null)
   const [submissionError, setSubmissionError] = React.useState<string | null>(null)
+  const [consultationStep, setConsultationStep] = React.useState<ProcessStep | null>(null)
+  const [loadResult, setLoadResult] = React.useState<{ key: string; error: string | null } | null>(null)
+  const [loadAttempt, setLoadAttempt] = React.useState(0)
+  const loadKey = `${user.id}:${processoQueryId}:${loadAttempt}`
+  const isLoadingProcess = Boolean(processoQueryId && loadResult?.key !== loadKey)
+  const loadError = processoQueryId && loadResult?.key === loadKey ? loadResult.error : null
+  const isReadOnly = !canEditBpmnLayout(process.status) || process.ownerId !== user.id
+  const canMutate = Boolean(user.id) && !isReadOnly && !isLoadingProcess && !loadError
+  const viewedStep = isReadOnly ? consultationStep ?? process.step : process.step
   const versionControl = useVersionControl()
-
-  React.useEffect(() => {
-    if (searchParams.get('novo') !== '1') return
-    const next = new URLSearchParams(searchParams)
-    next.delete('novo')
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
-
-  React.useEffect(() => {
-    if (!process.info.sector && defaultSector) {
-      setProcess((current) => ({
-        ...current,
-        info: { ...current.info, sector: defaultSector },
-      }))
-    }
-  }, [defaultSector, process.info.sector])
-
-  React.useEffect(() => {
-    if (processoQueryId || !process.bpmnXml) return
-    if (!diagramaPrecisaLayout(process.bpmnXml)) return
-    let active = true
-    void gerarLayoutAutomatico(process.bpmnXml)
-      .then((organizado) => {
-        if (!active || !organizado || organizado === process.bpmnXml) return
-        setProcess((current) => ({ ...current, bpmnXml: organizado }))
-      })
-      .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [processoQueryId, process.id])
-
-  React.useEffect(() => {
-    if (!processoQueryId || !user.id) return
-    let active = true
-
-    fetchProcessoByIdFromApi(processoQueryId)
-      .then((apiProcesso) => {
-        if (!active) return
-        const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
-        const localDraftId = reuseLocalDraftId(user.id, defaultSector, apiProcesso.id)
-        if (localDraftId) mapped.id = localDraftId
-        setProcess(mapped)
-        saveProcessDraft(mapped)
-        setLastSavedAt(mapped.updatedAt)
-
-        // Reorganiza automaticamente o DI apenas se houver colisão/sobreposição,
-        // preservando ajustes manuais feitos pelo usuário em "Editar Layout".
-        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
-          .then((normalizado) => {
-            if (!active || normalizado === mapped) return
-            setProcess(normalizado)
-            saveProcessDraft(normalizado)
-            setLastSavedAt(normalizado.updatedAt)
-          })
-          .catch(() => undefined)
-      })
-      .catch(() => {
-        // Fallback silencioso para o rascunho da sessão
-      })
-
-    return () => {
-      active = false
-    }
-  }, [processoQueryId, user.id, defaultSector])
-
-  React.useEffect(() => {
-    if (!user.id || process.status === 'Aguardando Validação do Gestor') return
-    if (!isProcessStarted(process)) return
-    const timeout = window.setTimeout(() => {
-      const saved = saveProcessDraft(process)
-      setLastSavedAt(saved.updatedAt)
-    }, 250)
-    return () => window.clearTimeout(timeout)
-  }, [process, user.id])
-
-  async function persistToBackend(snapshot: ProcessWizardState): Promise<string | null> {
-    if (!hasRequiredProcessInfo(snapshot.info)) return snapshot.backendId ?? null
-    try {
-      const synced = await syncProcessWithApi(snapshot, user.secretaria)
-      if (synced?.id) {
-        setProcess((current) => ({
-          ...current,
-          backendId: synced.id,
-          code: synced.codigo ?? current.code,
-        }))
-        return synced.id
-      }
-    } catch {
-      // Mantém funcionamento via sessionStorage se a API não estiver acessível
-    }
-    return snapshot.backendId ?? null
-  }
-
-  function updateInfo<Key extends keyof ProcessInfo>(key: Key, value: ProcessInfo[Key]) {
-    setProcess((current) => ({
-      ...current,
-      info: { ...current.info, [key]: value },
-      status: resolveWizardStatus(current.status, 'Rascunho'),
-    }))
-  }
-
-  function updateAnswer(key: InterviewAnswerKey, value: string) {
-    setProcess((current) => ({
-      ...current,
-      answers: { ...current.answers, [key]: value },
-      status: resolveWizardStatus(current.status, 'Em Entrevista'),
-    }))
-  }
-
-  function updateQuestionIndex(questionIndex: number) {
-    setProcess((current) => ({ ...current, questionIndex }))
-  }
-
-  function updateFeedback<Key extends keyof ProcessFeedback>(key: Key, value: ProcessFeedback[Key]) {
-    setProcess((current) => ({ ...current, feedback: { ...current.feedback, [key]: value } }))
-  }
-
-  function setStep(step: ProcessStep, status: ProcessWizardState['status']) {
-    const nextStatus = resolveWizardStatus(process.status, status)
-    const nextState: ProcessWizardState = { ...process, step, status: nextStatus }
-    setProcess(nextState)
-    void persistToBackend(nextState)
-  }
-
-  function saveDraft() {
-    const saved = saveProcessDraft(process)
-    setLastSavedAt(saved.updatedAt)
-    void persistToBackend(saved)
-  }
 
   /**
    * Aplica o auto layout ao diagrama gerado e persiste o resultado.
@@ -211,7 +90,7 @@ export function useProcessWizard(user: Usuario) {
    * Nenhuma falha aqui pode interromper a geração: se o layout ou o salvamento
    * falharem, o estado recebido é devolvido (com o XML organizado quando possível).
    */
-  async function aplicarLayoutAutomatico(
+  const aplicarLayoutAutomatico = React.useCallback(async function aplicarLayoutAutomatico(
     estado: ProcessWizardState,
     backendId: string,
     opcoes: { somenteSeNecessario?: boolean } = {},
@@ -238,9 +117,144 @@ export function useProcessWizard(user: Usuario) {
       // Persistência best-effort: o diagrama organizado segue no rascunho local.
       return { ...estado, bpmnXml: organizado }
     }
+  }, [user.id, defaultSector])
+
+  React.useEffect(() => {
+    if (searchParams.get('novo') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('novo')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  React.useEffect(() => {
+    if (processoQueryId || !process.bpmnXml || !canMutate) return
+    if (!diagramaPrecisaLayout(process.bpmnXml)) return
+    let active = true
+    void gerarLayoutAutomatico(process.bpmnXml)
+      .then((organizado) => {
+        if (!active || !organizado || organizado === process.bpmnXml) return
+        setProcess((current) => ({ ...current, bpmnXml: organizado }))
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [processoQueryId, process.id, process.bpmnXml, canMutate])
+
+  React.useEffect(() => {
+    if (!processoQueryId || !user.id) return
+    const cancellation = new AbortController()
+
+    fetchProcessoByIdFromApi(processoQueryId)
+      .then((apiProcesso) => {
+        if (cancellation.signal.aborted) return
+        const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
+        const editable = canEditBpmnLayout(mapped.status) && mapped.ownerId === user.id
+        const localDraftId = editable ? reuseLocalDraftId(user.id, defaultSector, apiProcesso.id) : null
+        if (localDraftId) mapped.id = localDraftId
+        setProcess(mapped)
+        setConsultationStep(null)
+        setLoadResult({ key: loadKey, error: null })
+        if (editable) saveProcessDraft(mapped)
+        setLastSavedAt(mapped.updatedAt)
+
+        // Reorganiza automaticamente o DI ao abrir em modo best-effort.
+        if (!editable) return
+        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
+          .then((normalizado) => {
+            if (cancellation.signal.aborted || normalizado === mapped) return
+            setProcess(normalizado)
+            saveProcessDraft(normalizado)
+            setLastSavedAt(normalizado.updatedAt)
+          })
+          .catch(() => undefined)
+      })
+      .catch((error) => {
+        if (cancellation.signal.aborted) return
+        setLoadResult({
+          key: loadKey,
+          error: error instanceof Error ? error.message : 'Não foi possível carregar o processo.',
+        })
+      })
+
+    return () => {
+      cancellation.abort()
+    }
+  }, [processoQueryId, user.id, defaultSector, loadKey, aplicarLayoutAutomatico])
+
+  React.useEffect(() => {
+    if (!canMutate) return
+    if (!isProcessStarted(process)) return
+    const timeout = window.setTimeout(() => {
+      const saved = saveProcessDraft(process)
+      setLastSavedAt(saved.updatedAt)
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [process, canMutate])
+
+  async function persistToBackend(snapshot: ProcessWizardState): Promise<string | null> {
+    if (!canMutate || !canEditBpmnLayout(snapshot.status)) return null
+    if (!hasRequiredProcessInfo(snapshot.info)) return snapshot.backendId ?? null
+    try {
+      const synced = await syncProcessWithApi(snapshot, user.secretaria)
+      if (synced?.id) {
+        setProcess((current) => ({
+          ...current,
+          backendId: synced.id,
+          code: synced.codigo ?? current.code,
+        }))
+        return synced.id
+      }
+    } catch {
+      // Mantém funcionamento via sessionStorage se a API não estiver acessível
+    }
+    return snapshot.backendId ?? null
+  }
+
+  function updateInfo<Key extends keyof ProcessInfo>(key: Key, value: ProcessInfo[Key]) {
+    if (!canMutate) return
+    setProcess((current) => ({
+      ...current,
+      info: { ...current.info, [key]: value },
+      status: resolveWizardStatus(current.status, 'Rascunho'),
+    }))
+  }
+
+  function updateAnswer(key: InterviewAnswerKey, value: string) {
+    if (!canMutate) return
+    setProcess((current) => ({
+      ...current,
+      answers: { ...current.answers, [key]: value },
+      status: resolveWizardStatus(current.status, 'Em Entrevista'),
+    }))
+  }
+
+  function updateQuestionIndex(questionIndex: number) {
+    if (!canMutate) return
+    setProcess((current) => ({ ...current, questionIndex }))
+  }
+
+  function updateFeedback<Key extends keyof ProcessFeedback>(key: Key, value: ProcessFeedback[Key]) {
+    if (!canMutate) return
+    setProcess((current) => ({ ...current, feedback: { ...current.feedback, [key]: value } }))
+  }
+
+  function setStep(step: ProcessStep, status: ProcessWizardState['status']) {
+    if (!canMutate) return
+    const nextState: ProcessWizardState = { ...process, step, status: resolveWizardStatus(process.status, status) }
+    setProcess(nextState)
+    void persistToBackend(nextState)
+  }
+
+  function saveDraft() {
+    if (!canMutate) return
+    const saved = saveProcessDraft(process)
+    setLastSavedAt(saved.updatedAt)
+    void persistToBackend(saved)
   }
 
   async function generateBpmn() {
+    if (!canMutate) return
     setIsGeneratingBpmn(true)
     setAiGenerationError(null)
 
@@ -277,7 +291,7 @@ export function useProcessWizard(user: Usuario) {
   }
 
   async function saveBpmnLayout(xml: string) {
-    if (!canEditBpmnLayout(process.status)) {
+    if (!canMutate) {
       setLayoutError(MOTIVO_BLOQUEIO_EDICAO)
       throw new Error(MOTIVO_BLOQUEIO_EDICAO)
     }
@@ -317,6 +331,7 @@ export function useProcessWizard(user: Usuario) {
   }
 
   function requestRegeneration() {
+    if (!canMutate) return
     const reason = process.feedback.generalNotes.trim() || 'Ajustes solicitados durante a avaliação'
     const historyEntry = versionControl.createHistoryEntry({
       user: user.nome,
@@ -335,6 +350,8 @@ export function useProcessWizard(user: Usuario) {
   }
 
   function submitForValidation() {
+    if (!canMutate) return
+    setConsultationStep(null)
     const submittedAt = new Date().toISOString()
     const historyEntry = versionControl.createHistoryEntry({
       user: user.nome,
@@ -373,12 +390,15 @@ export function useProcessWizard(user: Usuario) {
           }).catch(() => null)
         }
         const apiSubmitted = await submitProcessToApi(backendId, process.feedback)
+        const submittedState = mapApiProcessoToWizardState(apiSubmitted, user.id, defaultSector)
         setSubmissionError(null)
         setProcess((current) => ({
           ...current,
           backendId: apiSubmitted.id,
           code: apiSubmitted.codigo ?? current.code,
           sentAt: apiSubmitted.submetido_em ?? current.sentAt,
+          feedback: submittedState.hasSavedFeedback ? submittedState.feedback : current.feedback,
+          hasSavedFeedback: submittedState.hasSavedFeedback,
         }))
       } catch (error) {
         setSubmissionError(
@@ -397,6 +417,9 @@ export function useProcessWizard(user: Usuario) {
       setSearchParams({})
     }
     setAiGenerationError(null)
+    setConsultationStep(null)
+    setSubmissionError(null)
+    setLayoutError(null)
     const fresh = createInitialProcess(user.id, defaultSector)
     setProcess(fresh)
     setLastSavedAt(null)
@@ -404,6 +427,14 @@ export function useProcessWizard(user: Usuario) {
 
   return {
     process,
+    viewedStep,
+    isReadOnly,
+    isLoadingProcess,
+    loadError,
+    retryLoad: () => setLoadAttempt(attempt => attempt + 1),
+    selectConsultationStep: (step: ProcessStep) => {
+      if (isReadOnly && !isLoadingProcess && !loadError) setConsultationStep(step)
+    },
     allowedSectors,
     lastSavedAt,
     isGeneratingBpmn,

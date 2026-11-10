@@ -205,3 +205,25 @@ class TestUsersAndAuth:
 
         res_del = self.client.delete(f'/api/usuarios/{u1.id}/')
         assert res_del.status_code == 403
+
+
+@pytest.mark.django_db
+def test_admin_edits_complete_user_profile_without_changing_password():
+    admin = User.objects.create_superuser(email='admin-edit@example.test', nome='Admin', password='AdminPassword@123')
+    user = User.objects.create_user(email='operador-edit@example.test', nome='Servidor', password='Password@123',
+                                    papel=PapelUsuario.OPERACIONAL, setor='Protocolo')
+    previous_password = user.password
+    client = APIClient()
+    client.force_authenticate(admin)
+    response = client.patch(f'/api/usuarios/{user.id}/', {
+        'nome': 'Servidor atualizado', 'cpf': '52998224725', 'email': user.email, 'matricula': '',
+        'cargo': 'Analista', 'secretaria': 'SECT', 'telefone': '', 'setor': 'Protocolo',
+        'setores_vinculados': [], 'papel': PapelUsuario.OPERACIONAL, 'is_active': True,
+        'permissoes': ['responder_entrevistas_guiadas', 'executar_atividades', 'atualizar_informacoes',
+                       'consultar_processos', 'acessar_dashboard'],
+    }, format='json')
+    assert response.status_code == 200, response.data
+    assert response.data['nome'] == 'Servidor atualizado'
+    user.refresh_from_db()
+    assert user.password == previous_password
+    assert user.check_password('Password@123')

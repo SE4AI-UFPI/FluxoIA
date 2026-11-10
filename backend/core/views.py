@@ -167,7 +167,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             'exclusao__usuario',
             'entrevista',
         ).prefetch_related('versoes_bpmn__gerado_por', 'feedbacks_ia__autor', 'revisoes_governanca__revisor')
-        return Response(ProcessoSerializer(processos, many=True).data)
+        return Response(self.get_serializer(processos, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='versoes-bpmn')
     def versoes_bpmn(self, request, pk=None):
@@ -181,7 +181,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             dados=serializer.validated_data,
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path='layout-bpmn')
     def layout_bpmn(self, request, pk=None):
@@ -197,7 +197,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             motivo=serializer.validated_data.get('motivo_alteracao', ''),
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_200_OK)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='publicar')
     def publicar(self, request, pk=None):
@@ -209,7 +209,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             parecer=(request.data.get('parecer') or '').strip(),
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_200_OK)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='gerar-bpmn-ia')
     def gerar_bpmn_ia(self, request, pk=None):
@@ -247,7 +247,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             )
 
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='submeter')
     def submeter(self, request, pk=None):
@@ -261,7 +261,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             dados_feedback=serializer.validated_data,
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_200_OK)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='revisar')
     def revisar(self, request, pk=None):
@@ -281,7 +281,7 @@ class ProcessoViewSet(viewsets.ModelViewSet):
             dados_revisao=serializer.validated_data,
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
-        return Response(ProcessoSerializer(processo_atualizado).data, status=status.HTTP_200_OK)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
 
 
 class PerguntaEntrevistaViewSet(viewsets.ReadOnlyModelViewSet):

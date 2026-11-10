@@ -9,6 +9,7 @@ import type {
   ProcessWizardState,
 } from '../types/process.types'
 import { INITIAL_PROCESS_VERSION } from './versioning.service'
+import { restoreSavedFeedback } from './process-feedback.service'
 
 export type { ApiProcesso }
 
@@ -121,6 +122,12 @@ export function resolveWizardStatus(
   return targetRank > currentRank ? targetStatus : currentStatus
 }
 
+export function getLatestGovernanceReview(revisoes: ApiProcesso['revisoes_governanca']) {
+  return revisoes?.reduce<NonNullable<typeof revisoes>[number] | undefined>((latest, revisao) => (
+    !latest || Date.parse(revisao.criado_em) > Date.parse(latest.criado_em) ? revisao : latest
+  ), undefined)
+}
+
 export function createInitialProcess(ownerId: string, defaultSector: string): ProcessWizardState {
   const now = new Date().toISOString()
   return {
@@ -162,6 +169,7 @@ export function createInitialProcess(ownerId: string, defaultSector: string): Pr
       identifiedProblems: [],
       generalNotes: '',
     },
+    hasSavedFeedback: false,
     code: null,
     sentAt: null,
     updatedAt: now,
@@ -178,8 +186,8 @@ export function mapApiProcessoToWizardState(
   const versoes = api.versoes_bpmn ?? []
   const latestVersao = versoes[versoes.length - 1]
   const fichaTecnica = latestVersao?.estrutura_json?.ficha_tecnica ?? null
-  const revisoes = api.revisoes_governanca ?? []
-  const latestRevisao = revisoes[revisoes.length - 1]
+  const savedFeedback = restoreSavedFeedback(api.feedbacks_ia)
+  const latestRevisao = getLatestGovernanceReview(api.revisoes_governanca)
   const foiDevolvidoPelaSupervisao =
     (api.status === 'rascunho' || api.status === 'em_entrevista' || api.status === 'ajustes_solicitados') &&
     (latestRevisao?.decisao === 'ajustes_solicitados' || latestRevisao?.decisao === 'rejeitado')
@@ -205,6 +213,8 @@ export function mapApiProcessoToWizardState(
     status: foiDevolvidoPelaSupervisao ? 'Ajustes Solicitados' : mapApiStatusToWizardStatus(api.status),
     bpmnXml: api.bpmn_xml_atual ?? null,
     fichaTecnica,
+    feedback: savedFeedback ?? base.feedback,
+    hasSavedFeedback: savedFeedback !== null,
     version: api.versao_atual || INITIAL_PROCESS_VERSION,
     history: [
       ...(api.versoes_bpmn ?? []).map((versao) => ({

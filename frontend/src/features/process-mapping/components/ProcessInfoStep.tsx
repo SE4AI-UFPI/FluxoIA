@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ProcessInfo } from '../types/process.types'
 import type { ProcessInfoErrors } from '../validations/process.schema'
+import { ProcessInfoReadOnly } from './ProcessReadOnly'
 
 const DEFAULT_SECTORS = [
   'SDU: Protocolo',
@@ -27,6 +28,7 @@ export function ProcessInfoStep({
   onChange,
   onSave,
   onNext,
+  readOnly = false,
 }: {
   info: ProcessInfo
   sectors: string[]
@@ -35,6 +37,7 @@ export function ProcessInfoStep({
   onChange: <Key extends keyof ProcessInfo>(key: Key, value: ProcessInfo[Key]) => void
   onSave: () => void
   onNext: () => void
+  readOnly?: boolean
 }) {
   const sectorOptions = React.useMemo(() => {
     if (sectors.length > 0) {
@@ -44,6 +47,8 @@ export function ProcessInfoStep({
   }, [info.sector, sectors])
 
   const singleLockedSector = sectorOptions.length === 1
+
+  if (readOnly) return <ProcessInfoReadOnly info={info} />
 
   return (
     <Card>
