@@ -46,6 +46,8 @@ test('consulta da entrevista mostra todas as perguntas sem depender da posição
   assert.match(html, /Opcional/)
   assert.match(html, /Sem resposta registrada\./)
   assert.match(html, /Arquivamento\./)
+  assert.equal((html.match(/>Pergunta<\/dt>/g) ?? []).length, 3)
+  assert.equal((html.match(/>Resposta<\/dt>/g) ?? []).length, 3)
   assert.doesNotMatch(html, /Carregando entrevista|digitando|Finalizar Entrevista/)
 })
 

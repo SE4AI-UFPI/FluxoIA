@@ -59,10 +59,18 @@ export function InterviewReadOnly({ questions, answers }: {
                   {index + 1}. {question.title}
                 </h3>
                 <p className="mt-1 text-xs text-fx-cinza">{question.required ? 'Obrigatória' : 'Opcional'}</p>
-                <p className="mt-2 max-w-prose text-sm leading-relaxed text-fx-grafite [overflow-wrap:anywhere]">{question.prompt}</p>
-                <p className="mt-3 max-w-prose whitespace-pre-wrap text-sm leading-relaxed text-fx-marinho [overflow-wrap:anywhere]">
-                  {answers[question.id]?.trim() ? answers[question.id] : 'Sem resposta registrada.'}
-                </p>
+                <dl className="mt-4 space-y-4">
+                  <div className="space-y-1.5">
+                    <dt className="text-sm font-semibold text-fx-marinho">Pergunta</dt>
+                    <dd className="max-w-prose text-sm leading-relaxed text-fx-grafite [overflow-wrap:anywhere]">{question.prompt}</dd>
+                  </div>
+                  <div className="space-y-1.5 rounded-sm bg-fx-nevoa/40 p-4">
+                    <dt className="text-sm font-semibold text-fx-marinho">Resposta</dt>
+                    <dd className="max-w-prose whitespace-pre-wrap text-sm leading-relaxed text-fx-marinho [overflow-wrap:anywhere]">
+                      {answers[question.id]?.trim() ? answers[question.id] : 'Sem resposta registrada.'}
+                    </dd>
+                  </div>
+                </dl>
               </li>
             ))}
           </ol>
