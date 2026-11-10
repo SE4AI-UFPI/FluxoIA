@@ -39,7 +39,13 @@ docker compose up -d --build
 
 ### LiteLLM Proxy
 
-O backend acessa os modelos só pelo LiteLLM, pelo alias `fluxoia-geracao` definido em `litellm/config.yaml`. O proxy não tem porta pública: a UI fica em `http://localhost:4000/ui` (porta ajustável em `LITELLM_UI_PORT`) (usuário `admin`, senha = `LITELLM_MASTER_KEY`). Na VPS, acesse por túnel SSH: `ssh -L 4000:localhost:4000 usuario@vps`.
+O backend acessa os modelos só pelo LiteLLM, pelo alias `fluxoia-geracao`. O YAML mantém `model_list: []`: os modelos e suas credenciais são cadastrados pela UI/API e persistidos no banco, com `STORE_MODEL_IN_DB=True`. Assim, o provedor e o modelo real podem ser alterados sem mudar o código da aplicação. O proxy não tem porta pública: a UI fica em `http://localhost:4000/ui` (porta ajustável em `LITELLM_UI_PORT`) (usuário `admin`, senha = `LITELLM_MASTER_KEY`). Na VPS, acesse por túnel SSH: `ssh -L 4000:localhost:4000 usuario@vps`.
+
+No primeiro deploy, abra **Models + Endpoints → Add Model** e cadastre um modelo com o nome público **`fluxoia-geracao`** (o campo pode aparecer como *Public Model Name* ou *Model Name*). Selecione o provedor, o identificador do modelo real e as credenciais; quando necessário, informe também a URL do provedor. Configure o timeout em 110 segundos, abaixo dos 120 segundos do backend. Teste a conexão antes de usar a geração na aplicação. Se já existe um modelo com esse nome no banco, reutilize-o.
+
+Para trocar o modelo, edite a definição persistida mantendo o nome público `fluxoia-geracao`. Não adicione outra definição com esse mesmo nome, a menos que queira distribuir requisições entre os modelos. Modelos declarados no YAML são carregados junto dos modelos do banco; por isso, deixamos o YAML sem modelos, evitando uma entrada fixa que a UI não consegue gerenciar.
+
+`litellm_settings.drop_params: true` descarta parâmetros não suportados pelo modelo selecionado. Isso melhora a compatibilidade entre provedores, mas o parâmetro descartado deixa de influenciar a geração. Mudanças no YAML exigem `docker compose restart litellm`; modelos cadastrados pela UI/API permanecem no banco. Em uma instalação nova, a geração só funciona após cadastrar o alias. Preserve o volume do PostgreSQL e a mesma `LITELLM_SALT_KEY` para recuperar as credenciais persistidas.
 
 No primeiro deploy, gere a virtual key do backend e reinicie-o:
 
