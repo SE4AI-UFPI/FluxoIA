@@ -4,6 +4,8 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-fluxoia}
       POSTGRES_USER: ${POSTGRES_USER:-fluxoia}
@@ -56,8 +58,7 @@ services:
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
     ports:
-      # Só na própria máquina, para a UI (/ui). Na VPS, acesse por túnel SSH.
-      - '127.0.0.1:${LITELLM_UI_PORT:-4000}:4000'
+      - '0.0.0.0:${LITELLM_UI_PORT:-4000}:4000'
     extra_hosts:
       # Permite que o container alcance um Ollama rodando no host (Linux/VPS).
       - 'host.docker.internal:host-gateway'
