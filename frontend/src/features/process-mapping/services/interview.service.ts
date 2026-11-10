@@ -57,7 +57,7 @@ export const FALLBACK_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
     title: 'Aprova\u00e7\u00f5es e Vistorias',
     prompt:
       'Existe alguma etapa formal de aprova\u00e7\u00e3o, visto, vistoria t\u00e9cnica, despacho de chefia ou parecer jur\u00eddico?',
-    required: false,
+    required: true,
   },
   {
     id: 'rules',
@@ -99,7 +99,7 @@ export const FALLBACK_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
     title: 'Encerramento e Entrega',
     prompt:
       'Quando o processo \u00e9 considerado conclu\u00eddo e o que \u00e9 entregue ou registrado ao final (ex: emiss\u00e3o de certid\u00e3o/licen\u00e7a, deferimento, publica\u00e7\u00e3o ou arquivamento)?',
-    required: false,
+    required: true,
   },
 ]
 
@@ -111,7 +111,8 @@ export async function fetchPerguntasEntrevista(): Promise<InterviewQuestion[]> {
         id: item.chave,
         title: item.titulo,
         prompt: item.enunciado,
-        required: item.obrigatoria,
+        required:
+          item.obrigatoria || item.chave === 'approvals' || item.chave === 'completion',
       }))
     }
   } catch {

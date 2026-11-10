@@ -11,9 +11,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
 
-SECRET_KEY = os.getenv(
+_raw_secret_key = os.getenv(
     'DJANGO_SECRET_KEY',
     'django-insecure-7w*=h_=qr*mqe-fs2qtli9e)wyrtmy7*l#@f=_gounv=t_+&(%',
+)
+SECRET_KEY = (
+    _raw_secret_key
+    if len(_raw_secret_key.encode('utf-8')) >= 32
+    else f'{_raw_secret_key}-fluxoia-dev-hmac-sha256-padding-key'
 )
 
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
@@ -96,6 +101,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'core.User'
 

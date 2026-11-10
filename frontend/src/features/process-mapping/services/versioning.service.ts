@@ -1,3 +1,4 @@
+import { generateUUID } from '@/lib/utils'
 import type { ProcessHistoryEntry } from '../types/process.types'
 
 export const INITIAL_PROCESS_VERSION = '1.0.0'
@@ -29,7 +30,7 @@ export function createHistoryEntry({
   reason,
 }: Pick<ProcessHistoryEntry, 'user' | 'version' | 'reason'>): ProcessHistoryEntry {
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     date: new Date().toISOString(),
     user,
     version,

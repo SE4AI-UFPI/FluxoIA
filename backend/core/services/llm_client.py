@@ -40,6 +40,18 @@ class LLMClient:
         self.api_key = (api_key if api_key is not None else getattr(settings, 'LLM_API_KEY', '')).strip()
         self.timeout = timeout or int(getattr(settings, 'LLM_TIMEOUT', 60))
 
+    def _validar_configuracao(self) -> None:
+        """Falha cedo com mensagem acionável quando não há credencial nem endpoint local."""
+        provedores_com_chave = {'litellm', 'openai_compatible', 'openai', 'deepseek'}
+        if self.provider in provedores_com_chave and not self.api_key and not self.base_url:
+            raise LLMServiceError(
+                'Provedor de IA sem credencial. Crie o arquivo backend/.env (a partir de '
+                'backend/.env.example) com LLM_API_KEY e, se necessário, LLM_BASE_URL, e '
+                'reinicie o servidor Django — as variáveis só são lidas na inicialização. '
+                'Para uso local com Ollama, use LLM_PROVIDER=openai_compatible e '
+                'LLM_BASE_URL=http://localhost:11434/v1.'
+            )
+
     def gerar_completacao(
         self,
         *,
@@ -48,6 +60,8 @@ class LLMClient:
         temperature: float = 0.2,
         usuario_identificador: str | None = None,
     ) -> LLMCompletionResult:
+        self._validar_configuracao()
+
         messages = [
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_prompt},
@@ -68,7 +82,6 @@ class LLMClient:
             )
 
         raise LLMServiceError(f"Provedor de IA '{self.provider}' não suportado.")
-
     def gerar_json(
         self,
         *,
@@ -96,7 +109,10 @@ class LLMClient:
         try:
             import litellm
         except ImportError as exc:
-            raise LLMServiceError('Pacote litellm não está instalado no ambiente.') from exc
+            raise LLMServiceError(
+                'Pacote litellm não está instalado no ambiente. '
+                'Instale com "pip install -r requirements.txt" ou use LLM_PROVIDER=openai_compatible.'
+            ) from exc
 
         kwargs: dict[str, Any] = {
             'model': self.model,

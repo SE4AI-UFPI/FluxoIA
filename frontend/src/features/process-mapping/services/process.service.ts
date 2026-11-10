@@ -1,4 +1,5 @@
 import { apiClient } from '@/services/apiClient'
+import { generateUUID } from '@/lib/utils'
 import type {
   ApiProcesso,
   ProcessFeedback,
@@ -8,14 +9,40 @@ import type {
   ProcessWizardState,
 } from '../types/process.types'
 import { INITIAL_PROCESS_VERSION } from './versioning.service'
+import { restoreSavedFeedback } from './process-feedback.service'
 
 export type { ApiProcesso }
 
 const DRAFT_KEY_PREFIX = 'fluxoia_process_draft_v1'
+const DRAFT_INDEX_PREFIX = 'fluxoia_process_draft_index_v1'
 const COMPLETED_KEY_PREFIX = 'fluxoia_processes_v1'
 
 function getStorageKey(prefix: string, userId: string): string {
   return `${prefix}:${userId}`
+}
+
+function getDraftKey(userId: string, draftId: string): string {
+  return `${DRAFT_KEY_PREFIX}:${userId}:${draftId}`
+}
+
+function readDraftIndex(userId: string): string[] {
+  try {
+    const parsed = JSON.parse(
+      sessionStorage.getItem(getStorageKey(DRAFT_INDEX_PREFIX, userId)) ?? '[]',
+    )
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+function writeDraftIndex(userId: string, draftIds: string[]): void {
+  sessionStorage.setItem(
+    getStorageKey(DRAFT_INDEX_PREFIX, userId),
+    JSON.stringify([...new Set(draftIds.filter(Boolean))]),
+  )
 }
 
 export function mapWizardStatusToApiStatus(status: ProcessStatus): ApiProcesso['status'] {
@@ -30,10 +57,14 @@ export function mapWizardStatusToApiStatus(status: ProcessStatus): ApiProcesso['
       return 'em_avaliacao'
     case 'Aguardando Validação do Gestor':
       return 'aguardando_validacao'
+    case 'Ajustes Solicitados':
+      return 'ajustes_solicitados'
     case 'Aprovado':
       return 'aprovado'
     case 'Publicado':
       return 'publicado'
+    case 'Excluído':
+      return 'excluido'
     default:
       return 'rascunho'
   }
@@ -44,7 +75,6 @@ export function mapApiStatusToWizardStatus(status: ApiProcesso['status']): Proce
     case 'rascunho':
       return 'Rascunho'
     case 'em_entrevista':
-    case 'ajustes_solicitados':
       return 'Em Entrevista'
     case 'em_modelagem':
       return 'Em Modelagem BPMN'
@@ -52,19 +82,56 @@ export function mapApiStatusToWizardStatus(status: ApiProcesso['status']): Proce
       return 'Em Avaliação'
     case 'aguardando_validacao':
       return 'Aguardando Validação do Gestor'
+    case 'ajustes_solicitados':
+      return 'Ajustes Solicitados'
     case 'aprovado':
       return 'Aprovado'
     case 'publicado':
       return 'Publicado'
+    case 'excluido':
+      return 'Excluído'
     default:
       return 'Rascunho'
   }
 }
 
+const ORDEM_PROGRESSO_STATUS: Record<ProcessStatus, number> = {
+  Excluído: 0,
+  Rascunho: 1,
+  'Em Entrevista': 2,
+  'Em Modelagem BPMN': 3,
+  'Em Avaliação': 4,
+  'Ajustes Solicitados': 5,
+  'Aguardando Validação do Gestor': 6,
+  Aprovado: 7,
+  Publicado: 8,
+}
+
+/**
+ * Garante que a navegação entre etapas do assistente nunca regrida o status do processo
+ * (ex.: voltar da Modelagem para revisar uma resposta da Entrevista mantém "Em Modelagem BPMN",
+ * e processos devolvidos pela supervisão permanecem em "Ajustes Solicitados" até novo envio).
+ */
+export function resolveWizardStatus(
+  currentStatus: ProcessStatus,
+  targetStatus: ProcessStatus,
+): ProcessStatus {
+  if (currentStatus === 'Ajustes Solicitados') return 'Ajustes Solicitados'
+  const currentRank = ORDEM_PROGRESSO_STATUS[currentStatus] ?? 1
+  const targetRank = ORDEM_PROGRESSO_STATUS[targetStatus] ?? 1
+  return targetRank > currentRank ? targetStatus : currentStatus
+}
+
+export function getLatestGovernanceReview(revisoes: ApiProcesso['revisoes_governanca']) {
+  return revisoes?.reduce<NonNullable<typeof revisoes>[number] | undefined>((latest, revisao) => (
+    !latest || Date.parse(revisao.criado_em) > Date.parse(latest.criado_em) ? revisao : latest
+  ), undefined)
+}
+
 export function createInitialProcess(ownerId: string, defaultSector: string): ProcessWizardState {
   const now = new Date().toISOString()
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     backendId: null,
     ownerId,
     info: {
@@ -102,6 +169,7 @@ export function createInitialProcess(ownerId: string, defaultSector: string): Pr
       identifiedProblems: [],
       generalNotes: '',
     },
+    hasSavedFeedback: false,
     code: null,
     sentAt: null,
     updatedAt: now,
@@ -118,6 +186,11 @@ export function mapApiProcessoToWizardState(
   const versoes = api.versoes_bpmn ?? []
   const latestVersao = versoes[versoes.length - 1]
   const fichaTecnica = latestVersao?.estrutura_json?.ficha_tecnica ?? null
+  const savedFeedback = restoreSavedFeedback(api.feedbacks_ia)
+  const latestRevisao = getLatestGovernanceReview(api.revisoes_governanca)
+  const foiDevolvidoPelaSupervisao =
+    (api.status === 'rascunho' || api.status === 'em_entrevista' || api.status === 'ajustes_solicitados') &&
+    (latestRevisao?.decisao === 'ajustes_solicitados' || latestRevisao?.decisao === 'rejeitado')
 
   return {
     ...base,
@@ -137,37 +210,107 @@ export function mapApiProcessoToWizardState(
     },
     questionIndex: api.entrevista?.pergunta_atual_idx ?? 0,
     step,
-    status: mapApiStatusToWizardStatus(api.status),
+    status: foiDevolvidoPelaSupervisao ? 'Ajustes Solicitados' : mapApiStatusToWizardStatus(api.status),
     bpmnXml: api.bpmn_xml_atual ?? null,
     fichaTecnica,
+    feedback: savedFeedback ?? base.feedback,
+    hasSavedFeedback: savedFeedback !== null,
     version: api.versao_atual || INITIAL_PROCESS_VERSION,
-    history: (api.versoes_bpmn ?? []).map((versao) => ({
-      id: versao.id,
-      date: versao.criado_em,
-      user: versao.gerado_por_nome || api.criado_por_nome || 'Sistema',
-      version: versao.numero_versao,
-      reason: versao.motivo_alteracao,
-    })),
+    history: [
+      ...(api.versoes_bpmn ?? []).map((versao) => ({
+        id: versao.id,
+        date: versao.criado_em,
+        user: versao.gerado_por_nome || api.criado_por_nome || 'Sistema',
+        version: versao.numero_versao,
+        reason: versao.motivo_alteracao,
+      })),
+      ...(api.revisoes_governanca ?? []).map((revisao) => ({
+        id: revisao.id,
+        date: revisao.criado_em,
+        user: revisao.revisor_nome || 'Supervisão',
+        version: api.versao_atual || INITIAL_PROCESS_VERSION,
+        reason:
+          revisao.decisao === 'aprovado'
+            ? `Homologado pela supervisão: ${revisao.parecer}`
+            : revisao.decisao === 'ajustes_solicitados'
+              ? `Correção solicitada: ${revisao.parecer}`
+              : `Devolvido para refazer: ${revisao.parecer}`,
+      })),
+    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
     code: api.codigo,
     sentAt: api.submetido_em,
     updatedAt: api.atualizado_em || base.updatedAt,
   }
 }
 
-export function loadProcessDraft(userId: string, defaultSector: string): ProcessWizardState {
+export function loadProcessDraft(
+  userId: string,
+  defaultSector: string,
+  draftId?: string,
+): ProcessWizardState {
   const initial = createInitialProcess(userId, defaultSector)
+  if (draftId) {
+    return readStoredDraft(draftId, userId, defaultSector) ?? initial
+  }
+  return listProcessDrafts(userId, defaultSector)[0] ?? initial
+}
+
+/**
+ * Lista todos os rascunhos do usuário, do mais recente para o mais antigo.
+ * Cada processo possui seu próprio rascunho — um usuário pode manter vários em andamento.
+ */
+export function listProcessDrafts(userId: string, defaultSector: string): ProcessWizardState[] {
+  const drafts: ProcessWizardState[] = []
+
+  for (const draftId of readDraftIndex(userId)) {
+    const draft = readStoredDraft(draftId, userId, defaultSector)
+    if (draft) drafts.push(draft)
+  }
+
+  // Migração do formato antigo (um único rascunho por usuário).
+  const legacyKey = getStorageKey(DRAFT_KEY_PREFIX, userId)
+  const legacyRaw = sessionStorage.getItem(legacyKey)
+  if (legacyRaw) {
+    const legacy = normalizeStoredDraft(legacyRaw, userId, defaultSector)
+    if (legacy && !drafts.some((draft) => draft.id === legacy.id)) {
+      drafts.push(legacy)
+      saveProcessDraft(legacy)
+    }
+    sessionStorage.removeItem(legacyKey)
+  }
+
+  return drafts.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+}
+
+function readStoredDraft(
+  draftId: string,
+  userId: string,
+  defaultSector: string,
+): ProcessWizardState | null {
+  return normalizeStoredDraft(
+    sessionStorage.getItem(getDraftKey(userId, draftId)),
+    userId,
+    defaultSector,
+  )
+}
+
+function normalizeStoredDraft(
+  raw: string | null,
+  userId: string,
+  defaultSector: string,
+): ProcessWizardState | null {
+  if (!raw) return null
   try {
-    const stored = sessionStorage.getItem(getStorageKey(DRAFT_KEY_PREFIX, userId))
-    if (!stored) return initial
-    const parsed = JSON.parse(stored) as ProcessWizardState & {
-      info: ProcessInfo & { participants?: string[] }
-      answers: Partial<ProcessWizardState['answers']>
+    const parsed = JSON.parse(raw) as ProcessWizardState & {
+      info?: ProcessInfo & { participants?: string[] }
+      answers?: Partial<ProcessWizardState['answers']>
       feedback?: Partial<ProcessFeedback>
     }
-    if (parsed.ownerId !== userId || parsed.status === 'Aguardando Validação do Gestor') {
-      return initial
-    }
-    const { participants: _legacyParticipants, ...info } = parsed.info
+    if (!parsed?.id || parsed.ownerId !== userId) return null
+    if (parsed.status === 'Aguardando Validação do Gestor') return null
+
+    const initial = createInitialProcess(userId, defaultSector)
+    const { participants: _legacyParticipants, ...info } = parsed.info ?? {}
     return {
       ...initial,
       ...parsed,
@@ -176,7 +319,7 @@ export function loadProcessDraft(userId: string, defaultSector: string): Process
         ...info,
         sector: info.sector || defaultSector,
       },
-      answers: { ...initial.answers, ...parsed.answers },
+      answers: { ...initial.answers, ...(parsed.answers ?? {}) },
       feedback: {
         ...initial.feedback,
         ...(parsed.feedback ?? {}),
@@ -186,14 +329,65 @@ export function loadProcessDraft(userId: string, defaultSector: string): Process
       },
     }
   } catch {
-    return initial
+    return null
   }
 }
 
 export function saveProcessDraft(process: ProcessWizardState): ProcessWizardState {
   const updated = { ...process, updatedAt: new Date().toISOString() }
-  sessionStorage.setItem(getStorageKey(DRAFT_KEY_PREFIX, process.ownerId), JSON.stringify(updated))
+  sessionStorage.setItem(getDraftKey(process.ownerId, process.id), JSON.stringify(updated))
+  writeDraftIndex(process.ownerId, [...readDraftIndex(process.ownerId), process.id])
   return updated
+}
+
+const DELETABLE_PROCESS_STATUSES: ProcessStatus[] = [
+  'Rascunho',
+  'Em Entrevista',
+  'Em Modelagem BPMN',
+  'Em Avaliação',
+  'Ajustes Solicitados',
+]
+
+export function canDeleteProcess(status: ProcessStatus): boolean {
+  return DELETABLE_PROCESS_STATUSES.includes(status)
+}
+
+export function discardProcessDraft(userId: string, draftId?: string): void {
+  if (!draftId) {
+    for (const draft of listProcessDrafts(userId, '')) {
+      sessionStorage.removeItem(getDraftKey(userId, draft.id))
+    }
+    sessionStorage.removeItem(getStorageKey(DRAFT_KEY_PREFIX, userId))
+    sessionStorage.removeItem(getStorageKey(DRAFT_INDEX_PREFIX, userId))
+    return
+  }
+
+  // Um processo pode ter sido carregado da API (id do backend) e ainda manter rascunho local.
+  const relacionados = listProcessDrafts(userId, '').filter(
+    (draft) => draft.id === draftId || draft.backendId === draftId,
+  )
+  const idsParaRemover = new Set([draftId, ...relacionados.map((draft) => draft.id)])
+
+  for (const id of idsParaRemover) {
+    sessionStorage.removeItem(getDraftKey(userId, id))
+  }
+  writeDraftIndex(userId, readDraftIndex(userId).filter((id) => !idsParaRemover.has(id)))
+}
+
+/** Reaproveita o rascunho local existente para o mesmo processo do backend, evitando duplicatas. */
+export function reuseLocalDraftId(
+  userId: string,
+  defaultSector: string,
+  backendId: string,
+): string | null {
+  return (
+    listProcessDrafts(userId, defaultSector).find((draft) => draft.backendId === backendId)?.id ??
+    null
+  )
+}
+
+export async function deleteProcessFromApi(backendId: string, motivo = ''): Promise<void> {
+  await apiClient.delete(`/api/processos/${backendId}/`, { motivo })
 }
 
 function createProcessCode(sector: string): string {
@@ -294,6 +488,21 @@ export async function saveBpmnVersionToApi(
   return apiClient.post(`/api/processos/${backendId}/versoes-bpmn/`, {
     origem: 'ia',
     ...payload,
+  })
+}
+
+/**
+ * Persiste apenas ajustes visuais (layout/coordenadas) do BPMN.
+ * Não gera nova versão funcional: o backend mantém o número de versão vigente.
+ */
+export async function saveBpmnLayoutToApi(
+  backendId: string,
+  bpmnXml: string,
+  motivoAlteracao = 'Ajuste visual de layout (sem alteração funcional)',
+): Promise<ApiProcesso> {
+  return apiClient.patch<ApiProcesso>(`/api/processos/${backendId}/layout-bpmn/`, {
+    bpmn_xml: bpmnXml,
+    motivo_alteracao: motivoAlteracao,
   })
 }
 

@@ -5,6 +5,7 @@ import re
 from .models import (
     DecisaoGovernanca,
     EntrevistaProcesso,
+    ExclusaoProcesso,
     FeedbackFluxoIA,
     NivelEdicaoFluxo,
     OrigemVersaoBPMN,
@@ -162,8 +163,6 @@ class RegisterSerializer(serializers.ModelSerializer):
     papel = serializers.ChoiceField(
         choices=[
             (PapelUsuario.OPERACIONAL, 'Usuário Operacional'),
-            (PapelUsuario.COORDENADOR, 'Coordenador'),
-            (PapelUsuario.SUPERVISOR, 'Supervisor de Setor'),
         ],
         default=PapelUsuario.OPERACIONAL,
         required=False,
@@ -250,10 +249,26 @@ class VersaoFluxoBPMNSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'gerado_por', 'gerado_por_nome', 'criado_em']
 
 
+class AjusteLayoutBPMNSerializer(serializers.Serializer):
+    """Ajuste exclusivamente visual do BPMN (layout/coordenadas), sem nova versão funcional."""
+
+    bpmn_xml = serializers.CharField()
+    motivo_alteracao = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255,
+        default='Ajuste visual de layout (sem alteração funcional)',
+    )
+
+    def validate_bpmn_xml(self, value: str) -> str:
+        if '<' not in value or 'definitions' not in value:
+            raise serializers.ValidationError('XML BPMN inválido.')
+        return value
+
+
 class FeedbackFluxoIASerializer(serializers.ModelSerializer):
     PROBLEMAS_VALIDOS = {
-        'etapas_ausentes',
-        'raias_incorretas',
+        'etapas_ausentes',        'raias_incorretas',
         'decisoes_incorretas',
         'sequencia_incorreta',
         'aprovacoes_ausentes',
@@ -310,6 +325,25 @@ class RevisaoGovernancaSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'revisor', 'revisor_nome', 'criado_em']
 
 
+class ExclusaoProcessoSerializer(serializers.ModelSerializer):
+    processo_codigo = serializers.CharField(source='processo.codigo', read_only=True, default='')
+
+    class Meta:
+        model = ExclusaoProcesso
+        fields = [
+            'id',
+            'processo',
+            'processo_codigo',
+            'usuario',
+            'usuario_nome',
+            'usuario_email',
+            'numero_versao',
+            'motivo',
+            'criado_em',
+        ]
+        read_only_fields = fields
+
+
 class ProcessoSerializer(serializers.ModelSerializer):
     criado_por_nome = serializers.CharField(source='criado_por.nome', read_only=True, default='')
     aprovado_por_nome = serializers.CharField(source='aprovado_por.nome', read_only=True, default='')
@@ -318,6 +352,7 @@ class ProcessoSerializer(serializers.ModelSerializer):
     versoes_bpmn = VersaoFluxoBPMNSerializer(many=True, read_only=True)
     feedbacks_ia = FeedbackFluxoIASerializer(many=True, read_only=True)
     revisoes_governanca = RevisaoGovernancaSerializer(many=True, read_only=True)
+    exclusao = ExclusaoProcessoSerializer(read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = Processo
@@ -346,6 +381,7 @@ class ProcessoSerializer(serializers.ModelSerializer):
             'versoes_bpmn',
             'feedbacks_ia',
             'revisoes_governanca',
+            'exclusao',
         ]
         read_only_fields = [
             'id',
@@ -362,7 +398,20 @@ class ProcessoSerializer(serializers.ModelSerializer):
             'versoes_bpmn',
             'feedbacks_ia',
             'revisoes_governanca',
+            'exclusao',
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        usuario = getattr(request, 'user', None)
+        if not (
+            usuario is not None
+            and usuario.is_authenticated
+            and usuario.pk == instance.criado_por_id
+        ):
+            data.pop('entrevista', None)
+        return data
 
     def get_bpmn_xml_atual(self, obj: Processo) -> str | None:
         versoes = list(obj.versoes_bpmn.all())

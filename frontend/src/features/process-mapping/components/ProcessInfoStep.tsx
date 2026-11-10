@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { Check, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -5,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ProcessInfo } from '../types/process.types'
 import type { ProcessInfoErrors } from '../validations/process.schema'
+import { ProcessInfoReadOnly } from './ProcessReadOnly'
 
 const DEFAULT_SECTORS = [
   'SDU: Protocolo',
@@ -26,6 +28,7 @@ export function ProcessInfoStep({
   onChange,
   onSave,
   onNext,
+  readOnly = false,
 }: {
   info: ProcessInfo
   sectors: string[]
@@ -34,13 +37,18 @@ export function ProcessInfoStep({
   onChange: <Key extends keyof ProcessInfo>(key: Key, value: ProcessInfo[Key]) => void
   onSave: () => void
   onNext: () => void
+  readOnly?: boolean
 }) {
-  const sectorOptions = Array.from(
-    new Set([
-      ...(info.sector ? [info.sector] : []),
-      ...(sectors.length > 0 ? sectors : DEFAULT_SECTORS),
-    ]),
-  )
+  const sectorOptions = React.useMemo(() => {
+    if (sectors.length > 0) {
+      return sectors
+    }
+    return Array.from(new Set([...(info.sector ? [info.sector] : []), ...DEFAULT_SECTORS]))
+  }, [info.sector, sectors])
+
+  const singleLockedSector = sectorOptions.length === 1
+
+  if (readOnly) return <ProcessInfoReadOnly info={info} />
 
   return (
     <Card>
@@ -68,8 +76,9 @@ export function ProcessInfoStep({
               id="process-sector"
               value={info.sector || sectorOptions[0] || ''}
               onChange={(event) => onChange('sector', event.target.value)}
+              disabled={singleLockedSector}
               aria-invalid={Boolean(errors.sector)}
-              className="h-10 w-full rounded-sm border border-fx-linha bg-white px-3 text-sm text-fx-grafite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul"
+              className="h-10 w-full rounded-sm border border-fx-linha bg-white px-3 text-sm text-fx-grafite focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul disabled:cursor-not-allowed disabled:bg-fx-nevoa/40 disabled:text-fx-marinho"
             >
               {sectorOptions.map((sector) => (
                 <option key={sector} value={sector}>
@@ -77,6 +86,11 @@ export function ProcessInfoStep({
                 </option>
               ))}
             </select>
+            {singleLockedSector && (
+              <p className="text-[11px] text-fx-cinza">
+                Vinculado automaticamente ao seu setor de atuação.
+              </p>
+            )}
             <FieldError>{errors.sector}</FieldError>
           </div>
         </div>

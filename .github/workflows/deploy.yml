@@ -1,0 +1,46 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Unit Tests & Build Frontend
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Backend Tests
+        run: |
+          if [ ! -d "backend/venv" ]; then
+            python3 -m venv backend/venv
+          fi
+          source backend/venv/bin/activate
+          pip install --upgrade pip --quiet
+          pip install -r backend/requirements.txt --quiet
+          pytest backend/tests
+          deactivate
+
+      - name: Test Frontend Build
+        run: |
+          cd frontend
+          npm install --silent
+          npm run build
+
+  deploy:
+    name: Deploy to Contabo VPS
+    runs-on: self-hosted
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Execute Deploy Script
+        run: |
+          cd /var/www/fluxoia
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh

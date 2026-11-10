@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   Clock3,
+  Eye,
   FileCheck2,
   FilePlus2,
   ListFilter,
@@ -18,11 +19,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import {
   fetchProcessosFromApi,
+  getLatestGovernanceReview,
   type ApiProcesso,
 } from '@/features/process-mapping/services/process.service'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 import {
-  PROCESSOS_DEMONSTRACAO,
   SETORES_PROCESSO,
   STATUS_PROCESSO,
   type ProcessoResumo,
@@ -30,24 +31,39 @@ import {
 } from './processes.demo'
 
 const STATUS_VARIANT: Record<ProcessoStatus, 'default' | 'secondary' | 'success' | 'warning'> = {
+  Rascunho: 'secondary',
   'Em Entrevista': 'secondary',
   'Em Modelagem': 'secondary',
   'Em Revisão': 'warning',
+  'Ajustes Solicitados': 'warning',
   'Aguardando Aprovação': 'default',
   Aprovado: 'success',
   Publicado: 'success',
 }
 
-function mapApiStatusToDashboardStatus(status: ApiProcesso['status']): ProcessoStatus {
+function mapApiStatusToDashboardStatus(item: ApiProcesso): ProcessoStatus {
+  const status = item.status
+  if (status === 'rascunho' || status === 'em_entrevista' || status === 'ajustes_solicitados') {
+    const ultimaRevisao = getLatestGovernanceReview(item.revisoes_governanca)
+    if (
+      ultimaRevisao &&
+      (ultimaRevisao.decisao === 'ajustes_solicitados' || ultimaRevisao.decisao === 'rejeitado')
+    ) {
+      return 'Ajustes Solicitados'
+    }
+  }
+
   switch (status) {
     case 'rascunho':
+      return 'Rascunho'
     case 'em_entrevista':
       return 'Em Entrevista'
     case 'em_modelagem':
       return 'Em Modelagem'
     case 'em_avaliacao':
-    case 'ajustes_solicitados':
       return 'Em Revisão'
+    case 'ajustes_solicitados':
+      return 'Ajustes Solicitados'
     case 'aguardando_validacao':
       return 'Aguardando Aprovação'
     case 'aprovado':
@@ -55,7 +71,7 @@ function mapApiStatusToDashboardStatus(status: ApiProcesso['status']): ProcessoS
     case 'publicado':
       return 'Publicado'
     default:
-      return 'Em Entrevista'
+      return 'Rascunho'
   }
 }
 
@@ -76,7 +92,7 @@ function mapApiProcessoToResumo(item: ApiProcesso): ProcessoResumo {
     nome: item.nome,
     setor: item.setor || 'Não informado',
     ultimaAtualizacao: formattedDate,
-    status: mapApiStatusToDashboardStatus(item.status),
+    status: mapApiStatusToDashboardStatus(item),
   }
 }
 
@@ -87,6 +103,7 @@ function StatusBadge({ status }: { status: ProcessoStatus }) {
 function ProcessActions({ processo }: { processo: ProcessoResumo }) {
   const navigate = useNavigate()
   const query = `?processo=${encodeURIComponent(processo.id)}`
+  const readOnly = ['Aguardando Aprovação', 'Aprovado', 'Publicado'].includes(processo.status)
 
   return (
     <div className="flex items-center justify-end gap-1">
@@ -95,11 +112,11 @@ function ProcessActions({ processo }: { processo: ProcessoResumo }) {
         variant="ghost"
         size="icon"
         className="h-8 w-8"
-        aria-label={`Editar ${processo.nome}`}
-        title="Editar processo"
+        aria-label={`${readOnly ? 'Visualizar' : 'Editar'} ${processo.nome}`}
+        title={readOnly ? 'Visualizar processo' : 'Editar ou revisar processo'}
         onClick={() => navigate(`/mapear-processo${query}`)}
       >
-        <PencilLine className="h-4 w-4" />
+        {readOnly ? <Eye className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
       </Button>
       <Button
         type="button"
@@ -107,8 +124,8 @@ function ProcessActions({ processo }: { processo: ProcessoResumo }) {
         size="icon"
         className="h-8 w-8"
         aria-label={`Abrir diagrama de ${processo.nome}`}
-        title="Abrir diagrama BPMN"
-        onClick={() => navigate(`/mapear-processo${query}`)}
+        title="Abrir diagrama na Biblioteca BPMN"
+        onClick={() => navigate(`/bpmn${query}`)}
       >
         <Workflow className="h-4 w-4" />
       </Button>
@@ -153,7 +170,8 @@ export function OperationalDashboard({
   logout: () => void
 }) {
   const navigate = useNavigate()
-  const [processes, setProcesses] = React.useState<ProcessoResumo[]>(PROCESSOS_DEMONSTRACAO)
+  const [processes, setProcesses] = React.useState<ProcessoResumo[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [syncedWithApi, setSyncedWithApi] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const [sector, setSector] = React.useState('Todos os Setores')
@@ -161,6 +179,7 @@ export function OperationalDashboard({
 
   React.useEffect(() => {
     let active = true
+    setIsLoading(true)
     fetchProcessosFromApi()
       .then((apiProcessos) => {
         if (!active) return
@@ -169,8 +188,11 @@ export function OperationalDashboard({
       })
       .catch(() => {
         if (!active) return
-        setProcesses(PROCESSOS_DEMONSTRACAO)
+        setProcesses([])
         setSyncedWithApi(false)
+      })
+      .finally(() => {
+        if (active) setIsLoading(false)
       })
     return () => {
       active = false
@@ -213,10 +235,10 @@ export function OperationalDashboard({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => navigate('/usuarios/novo')}
+                onClick={() => navigate('/usuarios')}
               >
                 <UserPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Cadastrar Usuário</span>
+                <span className="hidden sm:inline">Gestão de Usuários</span>
               </Button>
             )}
             <div className="hidden flex-col items-end sm:flex">
@@ -233,10 +255,7 @@ export function OperationalDashboard({
         <Card>
           <CardContent className="flex flex-col items-start justify-between gap-5 pt-6 sm:flex-row sm:items-center">
             <div className="max-w-3xl space-y-2">
-              <Badge variant="secondary" className="normal-case tracking-normal">
-                <Workflow className="mr-1.5 h-3.5 w-3.5" />
-                Mapeamento de processos
-              </Badge>
+              
               <h1 className="font-serif text-3xl font-semibold leading-tight text-fx-marinho sm:text-4xl">
                 Bem-vindo ao Mapeamento de Processos
               </h1>
@@ -247,7 +266,7 @@ export function OperationalDashboard({
             <Button
               size="lg"
               className="w-full shrink-0 sm:w-auto"
-              onClick={() => navigate('/mapear-processo')}
+              onClick={() => navigate('/mapear-processo?novo=1')}
             >
               <FilePlus2 className="h-4 w-4" />
               Iniciar Novo Processo
@@ -305,11 +324,19 @@ export function OperationalDashboard({
                 Acompanhe os processos criados e o andamento do fluxo de validação institucional.
               </CardDescription>
             </div>
-            {syncedWithApi ? (
-              <Badge variant="success">Sincronizado com a API</Badge>
-            ) : (
-              <Badge variant="outline">Dados de demonstração</Badge>
-            )}
+            <div
+              className="flex items-center gap-2 cursor-help"
+              title={syncedWithApi ? "Online" : "Offline"}
+              aria-label={syncedWithApi ? "Online" : "Offline"}
+            >
+              <span
+                className={`inline-block h-3 w-3 rounded-full transition-colors ${
+                  syncedWithApi
+                    ? "bg-emerald-500 shadow-sm shadow-emerald-500/50"
+                    : "bg-rose-500 shadow-sm shadow-rose-500/50"
+                }`}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(170px,0.65fr)_minmax(170px,0.65fr)]">
@@ -352,7 +379,14 @@ export function OperationalDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProcesses.map((processo) => (
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-xs text-fx-cinza animate-pulse">
+                        Carregando processos...
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProcesses.map((processo) => (
                     <tr key={processo.id} className="border-b border-fx-linha/70 last:border-0">
                       <td className="px-3 py-3.5">
                         <p className="text-sm font-semibold text-fx-marinho">{processo.nome}</p>
@@ -363,16 +397,22 @@ export function OperationalDashboard({
                       <td className="px-3 py-3.5"><StatusBadge status={processo.status} /></td>
                       <td className="px-3 py-3.5"><ProcessActions processo={processo} /></td>
                     </tr>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
-              {filteredProcesses.length === 0 && (
+              {!isLoading && filteredProcesses.length === 0 && (
                 <p className="py-10 text-center text-sm text-fx-cinza">Nenhum processo encontrado para os filtros selecionados.</p>
               )}
             </div>
 
             <ul className="space-y-3 md:hidden">
-              {filteredProcesses.map((processo) => (
+              {isLoading ? (
+                <li className="rounded-sm border border-fx-linha bg-fx-papel p-4 text-center text-xs text-fx-cinza animate-pulse">
+                  Carregando processos...
+                </li>
+              ) : (
+                filteredProcesses.map((processo) => (
                 <li key={processo.id} className="rounded-sm border border-fx-linha bg-fx-papel p-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -386,19 +426,15 @@ export function OperationalDashboard({
                     <StatusBadge status={processo.status} />
                   </div>
                 </li>
-              ))}
-              {filteredProcesses.length === 0 && (
+              ))
+              )}
+              {!isLoading && filteredProcesses.length === 0 && (
                 <li className="py-8 text-center text-sm text-fx-cinza">Nenhum processo encontrado para os filtros selecionados.</li>
               )}
             </ul>
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-fx-linha/70 pt-3 text-xs text-fx-cinza">
               <span>Exibindo {filteredProcesses.length} de {processes.length} processos</span>
-              <span>
-                {syncedWithApi
-                  ? 'Conectado em tempo real com /api/processos/.'
-                  : 'Exibindo dados de demonstração locais.'}
-              </span>
             </div>
           </CardContent>
         </Card>

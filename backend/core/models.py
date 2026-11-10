@@ -106,6 +106,7 @@ class StatusProcesso(models.TextChoices):
     AJUSTES_SOLICITADOS = 'ajustes_solicitados', 'Ajustes Solicitados'
     APROVADO = 'aprovado', 'Aprovado'
     PUBLICADO = 'publicado', 'Publicado'
+    EXCLUIDO = 'excluido', 'Excluído'
 
 
 class Processo(models.Model):
@@ -150,6 +151,36 @@ class Processo(models.Model):
 
     def __str__(self) -> str:
         return f'{self.codigo or "S/C"} - {self.nome}'
+
+
+class ExclusaoProcesso(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    processo = models.OneToOneField(
+        Processo,
+        on_delete=models.PROTECT,
+        related_name='exclusao',
+    )
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='exclusoes_processos',
+    )
+    usuario_nome = models.CharField('nome de quem excluiu', max_length=150)
+    usuario_email = models.EmailField('e-mail de quem excluiu')
+    numero_versao = models.CharField('versão no momento da exclusão', max_length=20)
+    motivo = models.TextField('motivo da exclusão', blank=True, default='')
+    criado_em = models.DateTimeField('excluído em', auto_now_add=True)
+
+    class Meta:
+        db_table = 'exclusoes_processos'
+        verbose_name = 'exclusão de processo'
+        verbose_name_plural = 'exclusões de processos'
+        ordering = ['-criado_em']
+
+    def __str__(self) -> str:
+        return f'Exclusão - {self.processo.codigo or self.processo.nome}'
 
 
 class EntrevistaProcesso(models.Model):

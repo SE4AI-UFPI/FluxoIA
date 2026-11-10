@@ -1,10 +1,12 @@
+import * as React from 'react'
 import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
   Bot,
+  ChevronDown,
+  ClipboardCheck,
   Loader2,
-  Network,
   Save,
   Sparkles,
   WandSparkles,
@@ -12,7 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { BPMNViewer } from './BPMNViewer'
+import { BPMNEditor } from './BPMNEditor'
 import { ProcessFichaTecnicaCards } from './ProcessFichaTecnicaCards'
 import { ProcessStatus } from './ProcessStatus'
 import { VersionHistory } from './VersionHistory'
@@ -20,36 +22,48 @@ import type { ProcessWizardState } from '../types/process.types'
 
 export function BPMNGenerationStep({
   process,
+  readOnly = false,
   lastSavedAt,
   isGenerating = false,
   generationError = null,
+  isSavingLayout = false,
+  layoutError = null,
   onGenerate,
   onBack,
   onContinue,
   onSave,
+  onSaveLayout,
 }: {
   process: ProcessWizardState
+  readOnly?: boolean
   lastSavedAt: string | null
   isGenerating?: boolean
   generationError?: string | null
+  isSavingLayout?: boolean
+  layoutError?: string | null
   onGenerate: () => void
   onBack: () => void
   onContinue: () => void
   onSave: () => void
+  onSaveLayout: (xml: string) => Promise<void> | void
 }) {
+  const [fichaAberta, setFichaAberta] = React.useState(false)
+
   return (
     <div className="space-y-5">
+      {/* Ficha técnica do processo — topo, recolhível para ampliar a área do diagrama */}
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1.5">
-            <CardTitle className="text-xl">Modelagem e Geração do Fluxo BPMN (IA)</CardTitle>
+            <CardTitle className="text-xl">Ficha Técnica do Processo</CardTitle>
             <CardDescription>
-              Geração assistida por Inteligência Artificial com divisão automática de raias e decisões BPMN 2.0.
+              Informações complementares consolidadas a partir da entrevista guiada.
             </CardDescription>
           </div>
           <ProcessStatus status={process.status} />
         </CardHeader>
-        <CardContent className="grid gap-3 border-t border-fx-linha/70 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="space-y-4 border-t border-fx-linha/70 pt-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-[11px] text-fx-cinza">Nome do Processo</p>
             <p className="mt-1 text-sm font-semibold text-fx-marinho">{process.info.name}</p>
@@ -68,6 +82,32 @@ export function BPMNGenerationStep({
             <p className="text-[11px] text-fx-cinza">Versão Atual</p>
             <p className="mt-1 text-sm font-semibold text-fx-marinho">v{process.version}</p>
           </div>
+          </div>
+
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full justify-between sm:w-auto"
+              aria-expanded={fichaAberta}
+              onClick={() => setFichaAberta((current) => !current)}
+            >
+              <span className="flex items-center gap-1.5">
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${fichaAberta ? 'rotate-180' : ''}`}
+                />
+                {fichaAberta
+                  ? 'Ocultar quadros complementares'
+                  : 'Ver quadros complementares (legenda, documentos, sistemas, taxas)'}
+              </span>
+            </Button>
+            {fichaAberta && (
+              <div className="mt-3">
+                <ProcessFichaTecnicaCards process={process} />
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -84,41 +124,52 @@ export function BPMNGenerationStep({
         </div>
       )}
 
+      {layoutError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-sm border border-fx-alerta/40 bg-fx-alerta/10 px-4 py-3 text-sm text-fx-alerta"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold">Não foi possível salvar o layout</p>
+            <p className="text-xs leading-relaxed">{layoutError}</p>
+          </div>
+        </div>
+      )}
+
       {process.bpmnXml ? (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Network className="h-4 w-4 text-fx-azul" />
-                <CardTitle className="text-base">Diagrama BPMN 2.0 Gerado</CardTitle>
+                <ClipboardCheck className="h-4 w-4 text-fx-azul" />
+                <CardTitle className="text-base">Diagrama BPMN 2.0</CardTitle>
               </div>
-              <Badge variant="secondary">Versão {process.version}</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">Versão {process.version}</Badge>
+                <span className="text-xs text-fx-cinza" aria-live="polite">
+                  {lastSavedAt
+                    ? `Sincronizado às ${new Date(lastSavedAt).toLocaleTimeString('pt-BR')}`
+                    : 'Sincronizado com o banco'}
+                </span>
+              </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <BPMNViewer xml={process.bpmnXml} filename={process.code ?? 'processo-bpmn'} />
-            <ProcessFichaTecnicaCards process={process} />
-            <div className="flex flex-col-reverse gap-2 border-t border-fx-linha/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-xs text-fx-cinza" aria-live="polite">
-                {lastSavedAt ? `Sincronizado às ${new Date(lastSavedAt).toLocaleTimeString('pt-BR')}` : 'Sincronizado com o banco'}
-              </span>
-              <div className="grid gap-2 sm:flex">
-                <Button type="button" variant="outline" onClick={onBack} disabled={isGenerating}>
-                  <ArrowLeft className="h-4 w-4" /> Voltar à Entrevista
-                </Button>
-                <Button type="button" variant="outline" onClick={onSave} disabled={isGenerating}>
-                  <Save className="h-4 w-4" /> Salvar Rascunho
-                </Button>
-                <Button type="button" variant="outline" onClick={onGenerate} disabled={isGenerating}>
-                  {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                  {isGenerating ? 'Regenerando com IA...' : 'Regenerar com IA'}
-                </Button>
-                <Button type="button" onClick={onContinue} disabled={isGenerating}>
-                  Avaliar Fluxo <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+          <CardContent>
+            <BPMNEditor
+              xml={process.bpmnXml}
+              filename={process.code ?? 'processo-bpmn'}
+              processName={process.info.name}
+              status={process.status}
+              readOnly={readOnly}
+              isSaving={isSavingLayout}
+              onSaveLayout={onSaveLayout}
+            />
           </CardContent>
+        </Card>
+      ) : readOnly ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-fx-grafite">Não há diagrama BPMN disponível para consulta.</CardContent>
         </Card>
       ) : (
         <Card className="border-dashed border-fx-azul/40 bg-fx-nevoa/20">
@@ -169,6 +220,52 @@ export function BPMNGenerationStep({
                 )}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Avaliação da geração da IA — abaixo da ficha técnica e do diagrama */}
+      {process.bpmnXml && !readOnly && (
+        <Card>
+          <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Avaliação da Geração da IA</CardTitle>
+              <CardDescription>
+                Registre a qualidade do fluxo gerado e envie para validação do gestor quando estiver
+                adequado. Ajustes de layout não alteram a versão funcional do processo.
+              </CardDescription>
+            </div>
+            <Badge variant="secondary">
+              {process.feedback.representsProcess === null
+                ? 'Avaliação pendente'
+                : 'Avaliação preenchida'}
+            </Badge>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 border-t border-fx-linha/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={onBack} disabled={isSavingLayout}>
+                <ArrowLeft className="mr-1.5 h-4 w-4" /> Voltar à Entrevista
+              </Button>
+              <Button type="button" variant="outline" onClick={onSave} disabled={isSavingLayout}>
+                <Save className="mr-1.5 h-4 w-4" /> Salvar Rascunho
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onGenerate}
+                disabled={isGenerating || isSavingLayout}
+              >
+                {isGenerating ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <WandSparkles className="mr-1.5 h-4 w-4" />
+                )}
+                Geração com IA
+              </Button>
+            </div>
+            <Button type="button" onClick={onContinue} disabled={isGenerating || isSavingLayout}>
+              Avaliar Fluxo <ArrowRight className="ml-1.5 h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
       )}

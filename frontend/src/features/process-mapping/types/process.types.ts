@@ -6,8 +6,10 @@ export type ProcessStatus =
   | 'Em Modelagem BPMN'
   | 'Em Avaliação'
   | 'Aguardando Validação do Gestor'
+  | 'Ajustes Solicitados'
   | 'Aprovado'
   | 'Publicado'
+  | 'Excluído'
 
 export type InterviewAnswerKey =
   | 'trigger'
@@ -62,6 +64,21 @@ export interface ProcessFeedback {
   generalNotes: string // observação opcional
 }
 
+/** Avaliação já persistida, retornada pelo serializer do processo. */
+export interface ApiProcessFeedback {
+  id: string
+  versao_bpmn: string | null
+  autor: string
+  autor_nome: string
+  representa_processo: boolean
+  nota_precisao_geral: number
+  nivel_edicao_necessario: EditLevelRequired
+  clareza_entrevista: number
+  problemas_identificados: IdentifiedProblemTag[]
+  observacoes: string
+  criado_em: string
+}
+
 export interface ProcessHistoryEntry {
   id: string
   date: string
@@ -84,6 +101,7 @@ export interface ProcessWizardState {
   version: string
   history: ProcessHistoryEntry[]
   feedback: ProcessFeedback
+  hasSavedFeedback: boolean
   code: string | null
   sentAt: string | null
   updatedAt: string
@@ -119,6 +137,7 @@ export interface ApiProcesso {
     | 'ajustes_solicitados'
     | 'aprovado'
     | 'publicado'
+    | 'excluido'
   versao_atual: string
   bpmn_xml_atual: string | null
   criado_por: string
@@ -144,4 +163,21 @@ export interface ApiProcesso {
     gerado_por_nome: string
     criado_em: string
   }>
+  feedbacks_ia?: ApiProcessFeedback[]
+  revisoes_governanca?: Array<{
+    id: string
+    revisor_nome: string
+    decisao: 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
+    parecer: string
+    criado_em: string
+  }>
+  exclusao?: {
+    id: string
+    processo_codigo: string | null
+    usuario_nome: string
+    usuario_email: string
+    numero_versao: string
+    motivo: string
+    criado_em: string
+  } | null
 }

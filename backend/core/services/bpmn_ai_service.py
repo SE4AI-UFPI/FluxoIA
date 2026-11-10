@@ -206,6 +206,14 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
     all_nodes = [e.id for e in estrutura.elementos]
 
     # 1. Identifica ciclos / back-edges (ex: retorno de saneamento de pendência ou diligência)
+    import re
+
+    def extrair_ordem_num(nome: str) -> list[int] | None:
+        m = re.match(r'^(\d+(?:\.\d+)*)\b', (nome or '').strip())
+        if not m:
+            return None
+        return [int(p) for p in m.group(1).split('.')]
+
     adj = defaultdict(list)
     for fl in estrutura.fluxos:
         if fl.origem in elem_map and fl.destino in elem_map:
@@ -216,14 +224,27 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
 
     def dfs_cycle(u: str) -> None:
         visited[u] = 1
+        num_u = extrair_ordem_num(elem_map[u].nome)
         for v_node in adj[u]:
+            num_v = extrair_ordem_num(elem_map[v_node].nome)
             if visited.get(v_node) == 1:
+                back_edges.add((u, v_node))
+            elif (
+                num_u
+                and num_v
+                and (
+                    num_u[0] > num_v[0]
+                    or (num_u[0] == num_v[0] and len(num_u) > len(num_v))
+                )
+            ):
                 back_edges.add((u, v_node))
             elif visited.get(v_node, 0) == 0:
                 dfs_cycle(v_node)
         visited[u] = 2
 
-    for node_id in all_nodes:
+    start_nodes = [e.id for e in estrutura.elementos if e.tipo == 'startEvent']
+    other_nodes = [e.id for e in estrutura.elementos if e.tipo != 'startEvent']
+    for node_id in start_nodes + other_nodes:
         if visited.get(node_id, 0) == 0:
             dfs_cycle(node_id)
 
@@ -267,15 +288,16 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         lane_columns[lane_id].add(c)
         final_col[nid] = c
 
-    # 4. Cálculo das posições (x, y, width, height)
-    LANE_HEIGHT = 165
-    POOL_X = 120
-    POOL_Y = 80
-    COL_START_X = 220
-    COL_STEP_X = 195
+    # 4. Cálculo das posições (x, y, width, height) com folga generosa longe das linhas das raias
+    LANE_HEIGHT = 180
+    POOL_X = 60
+    POOL_Y = 60
+    COL_START_X = 205
+    COL_STEP_X = 235
+    INTERNAL_CORRIDOR = 22
 
     total_cols = max(max(final_col.values()) + 1, 3) if final_col else 3
-    POOL_WIDTH = max(800, (COL_START_X - POOL_X) + total_cols * COL_STEP_X + 80)
+    POOL_WIDTH = max(890, (COL_START_X - POOL_X) + total_cols * COL_STEP_X + 90)
     POOL_HEIGHT = len(raias) * LANE_HEIGHT
 
     bounds_map: dict[str, tuple[int, int, int, int]] = {}
@@ -293,7 +315,7 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         elif elem.tipo == 'exclusiveGateway':
             w, h = 50, 50
         else:
-            w, h = 135, 75
+            w, h = 140, 80
 
         x = center_x - (w // 2)
         y = lane_center_y - (h // 2)
@@ -352,9 +374,9 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
             f'</bpmndi:BPMNShape>'
         )
 
-    # 6. Roteamento inteligente de Edges (sem atravessar o meio das caixas)
+    # 6. Roteamento inteligente de Edges (sem atravessar caixas e sem sobrepor divisórias de raias)
     edges_xml_parts: list[str] = []
-    for fl in estrutura.fluxos:
+    for edge_idx, fl in enumerate(estrutura.fluxos):
         if fl.origem not in bounds_map or fl.destino not in bounds_map:
             continue
         u_elem = elem_map[fl.origem]
@@ -363,30 +385,41 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         tx, ty, tw, th = bounds_map[fl.destino]
         u_lane = u_elem.raia_id if u_elem.raia_id in raia_ids else default_raia_id
         v_lane = v_elem.raia_id if v_elem.raia_id in raia_ids else default_raia_id
+        u_lane_y = POOL_Y + raia_index_map[u_lane] * LANE_HEIGHT
+        v_lane_y = POOL_Y + raia_index_map[v_lane] * LANE_HEIGHT
+        offset_canal = ((edge_idx % 3) - 1) * 12
 
-        is_back = (fl.origem, fl.destino) in back_edges or tx < sx + 10
+        is_back = (fl.origem, fl.destino) in back_edges or tx <= sx
 
         if is_back:
-            # Retorno de ciclo (saneamento / diligência):
-            # Sai do topo da origem, passa por cima na margem limpa e desce no topo do destino
-            start_x = sx + (sw // 2)
-            start_y = sy
+            # Retorno de ciclo (saneamento / diligência) pelo corredor interno da raia do destino
             end_x = tx + (tw // 2)
-            end_y = ty
-            loop_y = min(sy, ty) - 25
-
-            waypoints = (
-                f'<di:waypoint x="{start_x}" y="{start_y}" />'
-                f'<di:waypoint x="{start_x}" y="{loop_y}" />'
-                f'<di:waypoint x="{end_x}" y="{loop_y}" />'
-                f'<di:waypoint x="{end_x}" y="{end_y}" />'
-            )
+            if ty >= sy:
+                start_x = sx + sw
+                start_y = sy + (sh // 2)
+                turn_x = sx + sw + 24 + offset_canal
+                corridor_y = v_lane_y + INTERNAL_CORRIDOR + (edge_idx % 2) * 8
+                end_y = ty
+                pts = [(start_x, start_y), (turn_x, start_y), (turn_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
+            else:
+                start_x = sx + (sw // 2)
+                start_y = sy
+                corridor_y = v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR - (edge_idx % 2) * 8
+                end_y = ty + th
+                pts = [(start_x, start_y), (start_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
+        elif u_elem.tipo == 'exclusiveGateway' and u_lane != v_lane:
+            # Saída de Gateway para outra raia: usa vértice superior ou inferior do losango
+            start_x = sx + (sw // 2)
+            start_y = sy if ty < sy else sy + sh
+            end_x = tx
+            end_y = ty + (th // 2)
+            pts = [(start_x, start_y), (start_x, end_y), (end_x, end_y)]
         elif u_lane == v_lane:
-            # Na mesma raia
+            start_x = sx + sw
             start_y = sy + (sh // 2)
+            end_x = tx
             end_y = ty + (th // 2)
 
-            # Verifica se há algum obstáculo intermediário na mesma raia
             x_min = sx + sw
             x_max = tx
             has_obstacle = False
@@ -402,57 +435,34 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
                         break
 
             if has_obstacle:
-                # Contorna por baixo na margem inferior da raia
-                bypass_y = sy + sh + 20
-                start_x = sx + sw
-                end_x = tx
-                turn1_x = start_x + 15
-                turn2_x = end_x - 15
-                waypoints = (
-                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
-                    f'<di:waypoint x="{turn1_x}" y="{start_y}" />'
-                    f'<di:waypoint x="{turn1_x}" y="{bypass_y}" />'
-                    f'<di:waypoint x="{turn2_x}" y="{bypass_y}" />'
-                    f'<di:waypoint x="{turn2_x}" y="{end_y}" />'
-                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
-                )
+                bypass_y = u_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
+                turn1_x = start_x + 18
+                turn2_x = end_x - 18
+                pts = [(start_x, start_y), (turn1_x, start_y), (turn1_x, bypass_y), (turn2_x, bypass_y), (turn2_x, end_y), (end_x, end_y)]
             else:
-                # Linha direta limpa
-                start_x = sx + sw
-                end_x = tx
-                waypoints = f'<di:waypoint x="{start_x}" y="{start_y}" /><di:waypoint x="{end_x}" y="{end_y}" />'
+                pts = [(start_x, start_y), (end_x, end_y)]
         else:
-            # Entre raias distintas
-            if u_elem.tipo == 'exclusiveGateway' and fl.condicao and 'sim' not in fl.condicao.lower():
-                # Desvio de gateway: sai pelo topo ou base em direção à raia do destino
-                if ty < sy:
-                    start_x = sx + (sw // 2)
-                    start_y = sy
-                else:
-                    start_x = sx + (sw // 2)
-                    start_y = sy + sh
-                end_x = tx
-                end_y = ty + (th // 2)
-                waypoints = (
-                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
-                    f'<di:waypoint x="{start_x}" y="{end_y}" />'
-                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
-                )
-            else:
-                start_x = sx + sw
-                start_y = sy + (sh // 2)
-                end_x = tx
-                end_y = ty + (th // 2)
-                turn_x = max(start_x + 20, min(start_x + 35, end_x - 20))
-                waypoints = (
-                    f'<di:waypoint x="{start_x}" y="{start_y}" />'
-                    f'<di:waypoint x="{turn_x}" y="{start_y}" />'
-                    f'<di:waypoint x="{turn_x}" y="{end_y}" />'
-                    f'<di:waypoint x="{end_x}" y="{end_y}" />'
-                )
+            start_x = sx + sw
+            start_y = sy + (sh // 2)
+            end_x = tx
+            end_y = ty + (th // 2)
+            turn_x = max(start_x + 18, min(start_x + 34 + offset_canal, end_x - 18))
+            pts = [(start_x, start_y), (turn_x, start_y), (turn_x, end_y), (end_x, end_y)]
+
+        waypoints = ''.join(f'<di:waypoint x="{px}" y="{py}" />' for px, py in pts)
+        label_xml = ''
+        if fl.condicao.strip():
+            p0_x, p0_y = pts[0]
+            p1_x, p1_y = pts[1] if len(pts) > 1 else pts[0]
+            is_vert = abs(p1_y - p0_y) > abs(p1_x - p0_x)
+            lw = min(130, max(44, int(len(fl.condicao.strip()) * 6.5)))
+            lh = 24
+            lx = p0_x + 8 if is_vert else p0_x + 12
+            ly = (p0_y - 30 if p1_y < p0_y else p0_y + 8) if is_vert else p0_y - lh - 4
+            label_xml = f'<bpmndi:BPMNLabel><dc:Bounds x="{lx}" y="{ly}" width="{lw}" height="{lh}" /></bpmndi:BPMNLabel>'
 
         edges_xml_parts.append(
-            f'<bpmndi:BPMNEdge id="{escape(fl.id)}_di" bpmnElement="{escape(fl.id)}">{waypoints}</bpmndi:BPMNEdge>'
+            f'<bpmndi:BPMNEdge id="{escape(fl.id)}_di" bpmnElement="{escape(fl.id)}">{waypoints}{label_xml}</bpmndi:BPMNEdge>'
         )
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
