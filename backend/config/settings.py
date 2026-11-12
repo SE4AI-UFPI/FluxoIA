@@ -68,8 +68,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+import sys
+
 # Database (PostgreSQL when POSTGRES_DB is set, otherwise SQLite for local dev)
-if os.getenv('POSTGRES_DB'):
+use_postgres = bool(os.getenv('POSTGRES_DB')) and os.getenv('USE_SQLITE_TESTS') != '1' and 'pytest' not in sys.modules
+if use_postgres:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',

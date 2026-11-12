@@ -12,7 +12,17 @@ export function validateProcessInfo(info: ProcessInfo): ProcessInfoErrors {
 
 export function getInterviewErrors(
   answers: Record<InterviewAnswerKey, string>,
+  questions?: Array<{ id: string; required: boolean }>,
 ): Partial<Record<InterviewAnswerKey, string>> {
+  if (questions && questions.length > 0) {
+    const requiredQuestions = questions.filter((q) => q.required)
+    return Object.fromEntries(
+      requiredQuestions
+        .filter((q) => !(answers[q.id] || '').trim())
+        .map((q) => [q.id, 'Responda esta pergunta para continuar.']),
+    )
+  }
+
   const required: InterviewAnswerKey[] = [
     'trigger',
     'activities',
@@ -24,7 +34,7 @@ export function getInterviewErrors(
   ]
   return Object.fromEntries(
     required
-      .filter((key) => !answers[key].trim())
+      .filter((key) => !(answers[key] || '').trim())
       .map((key) => [key, 'Responda esta pergunta para continuar.']),
   )
 }

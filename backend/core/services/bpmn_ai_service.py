@@ -160,6 +160,31 @@ FORMATO DE RETORNO OBRIGATÓRIO (JSON PURO):
 
 
 def montar_prompt_usuario(processo: Processo, respostas: dict[str, str]) -> str:
+    from core.models import PerguntaEntrevista
+
+    perguntas = list(PerguntaEntrevista.objects.filter(ativa=True).order_by('ordem'))
+    chaves_processadas = set()
+    linhas_entrevista: list[str] = []
+
+    if perguntas:
+        for idx, p in enumerate(perguntas, start=1):
+            chaves_processadas.add(p.chave)
+            valor = (respostas.get(p.chave) or '').strip()
+            linhas_entrevista.append(
+                f"{idx}. [{p.chave}] {p.titulo} ({p.enunciado}): {valor if valor else 'Não informado'}"
+            )
+        idx_extra = len(perguntas) + 1
+        for k, v in respostas.items():
+            if k not in chaves_processadas and isinstance(v, str) and v.strip():
+                linhas_entrevista.append(f"{idx_extra}. [{k}]: {v.strip()}")
+                idx_extra += 1
+    else:
+        for idx, (k, v) in enumerate(respostas.items(), start=1):
+            val = (v or '').strip() if isinstance(v, str) else str(v)
+            linhas_entrevista.append(f"{idx}. [{k}]: {val if val else 'Não informado'}")
+
+    bloco_respostas = "\n".join(linhas_entrevista)
+
     return f"""DADOS DO PROCESSO PÚBLICO:
 - Nome do Processo: {processo.nome}
 - Secretaria / Órgão: {processo.secretaria or 'Não informada'}
@@ -169,18 +194,7 @@ def montar_prompt_usuario(processo: Processo, respostas: dict[str, str]) -> str:
 - Legislação / Normas: {processo.legislacao or 'Não informada'}
 
 RESPOSTAS DA ENTREVISTA GUIADA (CHAVE -> RESPOSTA DO SERVIDOR):
-1. [trigger] Início do Processo / Solicitante: {respostas.get('trigger', '')}
-2. [activities] Atividades Principais: {respostas.get('activities', '')}
-3. [areasInvolved] Áreas e Unidades Envolvidas: {respostas.get('areasInvolved', '')}
-4. [sequence] Sequência da Tramitação: {respostas.get('sequence', '')}
-5. [responsibles] Responsáveis por Etapa: {respostas.get('responsibles', '')}
-6. [approvals] Aprovações e Vistorias: {respostas.get('approvals', '')}
-7. [rules] Regras de Negócio: {respostas.get('rules', '')}
-8. [fees] Taxas e Custos: {respostas.get('fees', '')}
-9. [exceptions] Pendências, Exceções e Prazos: {respostas.get('exceptions', '')}
-10. [documents] Documentação e Anexos: {respostas.get('documents', '')}
-11. [systems] Sistemas Utilizados: {respostas.get('systems', '')}
-12. [completion] Encerramento e Entrega: {respostas.get('completion', '')}
+{bloco_respostas}
 
 Gere o JSON estruturado do fluxo BPMN 2.0 e da Ficha Técnica correspondente."""
 
@@ -506,10 +520,22 @@ def gerar_fluxo_bpmn_com_ia(
     entrevista = getattr(processo, 'entrevista', None)
     respostas: dict[str, str] = dict(entrevista.respostas) if entrevista else {}
 
-    if not respostas.get('trigger', '').strip() or not respostas.get('activities', '').strip():
-        raise LLMServiceError(
-            'Responda pelo menos às perguntas obrigatórias da entrevista (Início e Atividades) antes de gerar o BPMN com IA.'
-        )
+    from core.models import PerguntaEntrevista
+
+    perguntas_obrigatorias = list(PerguntaEntrevista.objects.filter(ativa=True, obrigatoria=True))
+    if perguntas_obrigatorias:
+        faltantes = [p.titulo for p in perguntas_obrigatorias if not (respostas.get(p.chave) or '').strip()]
+        if faltantes:
+            raise LLMServiceError(
+                f'Responda às perguntas obrigatórias da entrevista antes de gerar o BPMN com IA: {", ".join(faltantes)}.'
+            )
+    else:
+        trigger_val = (respostas.get('trigger') or '').strip()
+        activities_val = (respostas.get('activities') or '').strip()
+        if not trigger_val and not activities_val and not any(v.strip() for v in respostas.values() if isinstance(v, str)):
+            raise LLMServiceError(
+                'Responda às perguntas da entrevista guiada antes de gerar o BPMN com IA.'
+            )
 
     client = llm_client or LLMClient()
     user_prompt = montar_prompt_usuario(processo, respostas)

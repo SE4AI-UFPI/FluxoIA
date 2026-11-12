@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -7,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import PapelUsuario, PerguntaEntrevista, Processo, StatusProcesso
-from .permissions import IsAdminOrSelf
+from .permissions import IsAdminOrReadOnly, IsAdminOrSelf
 from .serializers import (
     AjusteLayoutBPMNSerializer,
     ChangePasswordSerializer,
@@ -284,12 +285,60 @@ class ProcessoViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
 
 
-class PerguntaEntrevistaViewSet(viewsets.ReadOnlyModelViewSet):
-    """GET /api/perguntas-entrevista/ -> Lista de perguntas ativas da entrevista guiada."""
+class PerguntaEntrevistaViewSet(viewsets.ModelViewSet):
+    """
+    CRUD completo de Perguntas da Entrevista Guiada.
+    - GET /api/perguntas-entrevista/: lista perguntas ativas (ou todas se admin passar ?todas=true).
+    - POST, PUT, PATCH, DELETE: restrito a administradores (papel == 'admin').
+    - POST /api/perguntas-entrevista/reordenar/: atualiza ordem das perguntas.
+    """
 
     serializer_class = PerguntaEntrevistaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
     pagination_class = None
 
     def get_queryset(self):
+        user = self.request.user
+        todas = self.request.query_params.get('todas', '').lower() in ('true', '1')
+        if user and user.is_authenticated and user.papel == PapelUsuario.ADMIN and todas:
+            return PerguntaEntrevista.objects.all().order_by('ordem')
         return PerguntaEntrevista.objects.filter(ativa=True).order_by('ordem')
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Por padrão, realiza exclusão lógica (desativação).
+        Se passado ?force=true, realiza exclusão física.
+        """
+        instance = self.get_object()
+        force = request.query_params.get('force', '').lower() in ('true', '1')
+        if force:
+            instance.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        instance.ativa = False
+        instance.save(update_fields=['ativa', 'atualizado_em'])
+        return Response(
+            {'detail': f'Pergunta "{instance.titulo}" desativada com sucesso.'},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=['post'], url_path='reordenar')
+    def reordenar(self, request):
+        """
+        Reordena as perguntas com base na lista de IDs enviada.
+        Payload esperado: {"ordem_ids": ["uuid-1", "uuid-2", ...]}
+        """
+        ordem_ids = request.data.get('ordem_ids', [])
+        if not isinstance(ordem_ids, list) or not ordem_ids:
+            return Response(
+                {'detail': 'Envie uma lista com os IDs das perguntas no campo "ordem_ids".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            for idx, pid in enumerate(ordem_ids, start=1):
+                PerguntaEntrevista.objects.filter(id=pid).update(ordem=idx)
+
+        perguntas = PerguntaEntrevista.objects.all().order_by('ordem')
+        return Response(self.get_serializer(perguntas, many=True).data, status=status.HTTP_200_OK)
+

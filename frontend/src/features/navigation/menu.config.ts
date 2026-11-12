@@ -1,5 +1,6 @@
 import {
   ChartNoAxesCombined,
+  HelpCircle,
   LayoutDashboard,
   MessageSquareText,
   ShieldCheck,
@@ -52,6 +53,13 @@ export const MENU_ITEMS: MenuConfigItem[] = [
     label: 'Gestão de Usuários',
     path: '/usuarios',
     icon: UsersRound,
+    permission: 'users:manage',
+  },
+  {
+    id: 'interview-questions',
+    label: 'Perguntas da Entrevista',
+    path: '/perguntas-entrevista',
+    icon: HelpCircle,
     permission: 'users:manage',
   },
 ]

@@ -9,6 +9,7 @@ export type MenuId =
   | 'indicators'
   | 'reports'
   | 'user-management'
+  | 'interview-questions'
 
 export type MenuPermission =
   | 'dashboard:view'
