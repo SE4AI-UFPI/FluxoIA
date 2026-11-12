@@ -16,6 +16,10 @@ echo "==> Sincronizando código com origin/main..."
 git fetch origin main
 git reset --hard origin/main
 
+# 1.1 Garantir que os containers de infraestrutura (Postgres e LiteLLM) estão ativos e atualizados
+echo "==> Atualizando e iniciando serviços Docker (Postgres e LiteLLM)..."
+docker compose up -d db litellm
+
 # 2. Configurar backend Python
 echo "==> Configurando Backend (Python venv)..."
 if [ ! -d "backend/venv" ]; then

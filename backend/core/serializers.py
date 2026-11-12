@@ -421,7 +421,10 @@ class ProcessoSerializer(serializers.ModelSerializer):
 
 
 class PerguntaEntrevistaSerializer(serializers.ModelSerializer):
-    """DTO para listagem das perguntas da entrevista guiada."""
+    """DTO para listagem e gerenciamento das perguntas da entrevista guiada."""
+
+    chave = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    ordem = serializers.IntegerField(required=False)
 
     class Meta:
         model = PerguntaEntrevista
@@ -433,7 +436,42 @@ class PerguntaEntrevistaSerializer(serializers.ModelSerializer):
             'enunciado',
             'obrigatoria',
             'ativa',
+            'criado_em',
+            'atualizado_em',
         ]
-        read_only_fields = ['id', 'chave', 'ordem', 'titulo', 'enunciado', 'obrigatoria', 'ativa']
+        read_only_fields = ['id', 'criado_em', 'atualizado_em']
+
+    def validate_chave(self, value: str) -> str:
+        from django.utils.text import slugify
+        cleaned = slugify(value).replace('-', '_')
+        if not cleaned:
+            raise serializers.ValidationError('A chave deve conter caracteres alfanuméricos válidos.')
+        instance = getattr(self, 'instance', None)
+        qs = PerguntaEntrevista.objects.filter(chave=cleaned)
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f'Já existe uma pergunta com a chave "{cleaned}".')
+        return cleaned
+
+    def create(self, validated_data):
+        from django.db.models import Max
+        from django.utils.text import slugify
+
+        if not validated_data.get('chave'):
+            base_slug = slugify(validated_data.get('titulo', '')).replace('-', '_')[:40] or 'pergunta'
+            slug = base_slug
+            counter = 1
+            while PerguntaEntrevista.objects.filter(chave=slug).exists():
+                slug = f'{base_slug}_{counter}'
+                counter += 1
+            validated_data['chave'] = slug
+
+        if 'ordem' not in validated_data or validated_data['ordem'] is None:
+            maior_ordem = PerguntaEntrevista.objects.aggregate(Max('ordem'))['ordem__max'] or 0
+            validated_data['ordem'] = maior_ordem + 1
+
+        return super().create(validated_data)
+
 
 

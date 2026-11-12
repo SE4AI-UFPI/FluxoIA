@@ -5,6 +5,7 @@ import { DashboardPlaceholder } from '@/pages/DashboardPlaceholder'
 import { LoginPage } from '@/pages/LoginPage'
 import { UserRegistrationPage } from '@/features/users/UserRegistrationPage'
 import { UsersManagementPage } from '@/features/users/UsersManagementPage'
+import { QuestionsManagementPage } from '@/features/admin/questions/QuestionsManagementPage'
 import { canAccessMenu } from '@/features/navigation/permissions.config'
 import { Sidebar } from '@/features/navigation/sidebar'
 
@@ -175,6 +176,16 @@ export function App() {
               <ProtectedRoute>
                 <AdminRoute>
                   <UserRegistrationPage />
+                </AdminRoute>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perguntas-entrevista"
+            element={
+              <ProtectedRoute>
+                <AdminRoute>
+                  <QuestionsManagementPage />
                 </AdminRoute>
               </ProtectedRoute>
             }

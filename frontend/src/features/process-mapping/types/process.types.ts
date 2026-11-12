@@ -24,6 +24,7 @@ export type InterviewAnswerKey =
   | 'documents'
   | 'systems'
   | 'completion'
+  | (string & {})
 
 export interface ProcessFichaTecnica {
   legenda: string[]

@@ -123,7 +123,7 @@ export function ProcessMappingPage() {
   }
 
   function finishInterview() {
-    const errors = getInterviewErrors(process.answers)
+    const errors = getInterviewErrors(process.answers, questions)
     const firstMissingKey = Object.keys(errors)[0] as InterviewAnswerKey | undefined
     if (firstMissingKey) {
       const questionIndex = questions.findIndex(({ id }) => id === firstMissingKey)

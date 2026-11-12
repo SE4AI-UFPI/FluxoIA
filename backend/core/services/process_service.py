@@ -33,6 +33,19 @@ RESPOSTAS_PADRAO: dict[str, str] = {
     'completion': '',
 }
 
+
+def obter_respostas_iniciais() -> dict[str, str]:
+    """Retorna as chaves das perguntas ativas cadastradas no banco ou as chaves padrão como fallback."""
+    try:
+        from core.models import PerguntaEntrevista
+        chaves = list(PerguntaEntrevista.objects.filter(ativa=True).values_list('chave', flat=True))
+        if chaves:
+            return {chave: '' for chave in chaves}
+    except Exception:
+        pass
+    return dict(RESPOSTAS_PADRAO)
+
+
 STATUS_EXCLUSAO_PERMITIDOS = {
     StatusProcesso.RASCUNHO,
     StatusProcesso.EM_ENTREVISTA,
@@ -132,7 +145,8 @@ def criar_processo(*, usuario: User, dados: dict) -> Processo:
 
     processo = Processo.objects.create(criado_por=usuario, **dados_limpos)
 
-    respostas_iniciais = {**RESPOSTAS_PADRAO, **(dados_entrevista.get('respostas') or {})}
+    respostas_base = obter_respostas_iniciais()
+    respostas_iniciais = {**respostas_base, **(dados_entrevista.get('respostas') or {})}
     pergunta_idx = dados_entrevista.get('pergunta_atual_idx', 0)
 
     EntrevistaProcesso.objects.create(
@@ -170,15 +184,16 @@ def atualizar_processo(*, processo: Processo, dados: dict, usuario: User) -> Pro
     processo.save()
 
     if dados_entrevista is not None:
+        respostas_base = obter_respostas_iniciais()
         entrevista, _ = EntrevistaProcesso.objects.get_or_create(
             processo=processo,
-            defaults={'respostas': dict(RESPOSTAS_PADRAO)},
+            defaults={'respostas': dict(respostas_base)},
         )
         if 'pergunta_atual_idx' in dados_entrevista:
             entrevista.pergunta_atual_idx = dados_entrevista['pergunta_atual_idx']
         if 'respostas' in dados_entrevista and isinstance(dados_entrevista['respostas'], dict):
             entrevista.respostas = {
-                **RESPOSTAS_PADRAO,
+                **respostas_base,
                 **(entrevista.respostas or {}),
                 **dados_entrevista['respostas'],
             }

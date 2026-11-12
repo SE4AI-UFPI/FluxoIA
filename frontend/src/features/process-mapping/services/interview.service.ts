@@ -16,6 +16,8 @@ export interface ApiInterviewQuestion {
   enunciado: string
   obrigatoria: boolean
   ativa: boolean
+  criado_em?: string
+  atualizado_em?: string
 }
 
 export const FALLBACK_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
@@ -111,14 +113,41 @@ export async function fetchPerguntasEntrevista(): Promise<InterviewQuestion[]> {
         id: item.chave,
         title: item.titulo,
         prompt: item.enunciado,
-        required:
-          item.obrigatoria || item.chave === 'approvals' || item.chave === 'completion',
+        required: item.obrigatoria,
       }))
     }
   } catch {
     // Fallback gracioso se a rede falhar
   }
   return FALLBACK_INTERVIEW_QUESTIONS
+}
+
+export async function fetchPerguntasAdmin(): Promise<ApiInterviewQuestion[]> {
+  return apiClient.get<ApiInterviewQuestion[]>('/api/perguntas-entrevista/?todas=true')
+}
+
+export async function createPerguntaAdmin(
+  payload: Pick<ApiInterviewQuestion, 'titulo' | 'enunciado'> & Partial<ApiInterviewQuestion>,
+): Promise<ApiInterviewQuestion> {
+  return apiClient.post<ApiInterviewQuestion>('/api/perguntas-entrevista/', payload)
+}
+
+export async function updatePerguntaAdmin(
+  id: string,
+  payload: Partial<ApiInterviewQuestion>,
+): Promise<ApiInterviewQuestion> {
+  return apiClient.patch<ApiInterviewQuestion>(`/api/perguntas-entrevista/${id}/`, payload)
+}
+
+export async function deletePerguntaAdmin(id: string, force = false): Promise<void> {
+  const url = force ? `/api/perguntas-entrevista/${id}/?force=true` : `/api/perguntas-entrevista/${id}/`
+  await apiClient.delete(url)
+}
+
+export async function reordenarPerguntasAdmin(ordemIds: string[]): Promise<ApiInterviewQuestion[]> {
+  return apiClient.post<ApiInterviewQuestion[]>('/api/perguntas-entrevista/reordenar/', {
+    ordem_ids: ordemIds,
+  })
 }
 
 export function getInterviewProgress(questionIndex: number, totalQuestions: number): number {
