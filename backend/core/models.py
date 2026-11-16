@@ -374,3 +374,43 @@ class PerguntaEntrevista(models.Model):
         return f'{self.ordem}. {self.titulo} ({self.chave})'
 
 
+class LogValidacaoRespostaEntrevista(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='logs_validacao_entrevista',
+    )
+    processo = models.ForeignKey(
+        Processo,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='logs_validacao_entrevista',
+    )
+    processo_nome = models.CharField('nome do processo no momento', max_length=200, blank=True, default='')
+    chave_pergunta = models.CharField('chave da pergunta', max_length=50)
+    titulo_pergunta = models.CharField('título da pergunta', max_length=150)
+    obrigatoria = models.BooleanField('pergunta obrigatória', default=False)
+    resposta_enviada = models.TextField('resposta enviada pelo usuário', blank=True, default='')
+    status = models.CharField('status da avaliação', max_length=20)
+    origem = models.CharField('origem da avaliação', max_length=25, default='ia_llm')
+    mensagem_feedback = models.TextField('feedback exibido', blank=True, default='')
+    sugestao_melhoria = models.TextField('sugestão de melhoria', blank=True, default='')
+    latencia_segundos = models.FloatField('latência da avaliação (s)', default=0.0)
+    tokens_totais = models.PositiveIntegerField('tokens consumidos', default=0)
+    criado_em = models.DateTimeField('criado em', auto_now_add=True)
+
+    class Meta:
+        db_table = 'logs_validacao_entrevista'
+        verbose_name = 'log de validação de resposta da entrevista'
+        verbose_name_plural = 'logs de validação de respostas da entrevista'
+        ordering = ['criado_em']
+
+    def __str__(self) -> str:
+        return f'[{self.status}] {self.chave_pergunta} ({self.processo_nome or "Sem nome"})'
+
+
+

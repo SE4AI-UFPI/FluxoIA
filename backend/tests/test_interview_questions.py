@@ -213,3 +213,81 @@ def test_metricas_piloto_e_latencia_meta_ia(operador_user, perguntas_iniciais):
     assert "[SISTEMA]  Latência de geração IA" in output_text
     assert "BPMN-PILOTO-001" in output_text
 
+
+@pytest.mark.django_db
+def test_validacao_resposta_entrevista_heuristica_e_ia(operador_user):
+    from unittest.mock import patch
+    from core.services.bpmn_ai_service import ValidacaoRespostaIA
+
+    client = APIClient()
+    client.force_authenticate(user=operador_user)
+
+    # 1. Ruído óbvio ("asdf") deve retornar invalida imediatamente sem chamar LLM
+    res_ruido = client.post(
+        "/api/perguntas-entrevista/validar-resposta/",
+        {
+            "chave_pergunta": "trigger",
+            "titulo_pergunta": "Início do Processo",
+            "enunciado_pergunta": "O que dá início ao processo?",
+            "obrigatoria": True,
+            "resposta": "asdf",
+        },
+        format="json",
+    )
+    assert res_ruido.status_code == status.HTTP_200_OK
+    assert res_ruido.json()["status"] == "invalida"
+
+    # 2. Resposta negativa curta ("Não há") em pergunta de taxas deve ser aprovada na hora
+    res_taxa = client.post(
+        "/api/perguntas-entrevista/validar-resposta/",
+        {
+            "chave_pergunta": "fees",
+            "titulo_pergunta": "Taxas e Custos",
+            "enunciado_pergunta": "Envolve cobrança de taxas?",
+            "obrigatoria": False,
+            "resposta": "Não há",
+        },
+        format="json",
+    )
+    assert res_taxa.status_code == status.HTTP_200_OK
+    assert res_taxa.json()["status"] == "valida"
+
+    # 3. Resposta vaga avaliada pela IA
+    with patch("core.services.bpmn_ai_service.LLMClient") as mock_llm_cls:
+        mock_instance = mock_llm_cls.return_value
+        mock_instance.gerar_json.return_value = (
+            {
+                "status": "vaga",
+                "mensagem_feedback": "Você citou que o setor analisa, mas não especificou qual setor.",
+                "sugestao_melhoria": "Informe o nome da coordenação ou diretoria responsável.",
+            },
+            None,
+        )
+        res_vaga = client.post(
+            "/api/perguntas-entrevista/validar-resposta/",
+            {
+                "chave_pergunta": "areasInvolved",
+                "titulo_pergunta": "Áreas e Unidades Envolvidas",
+                "enunciado_pergunta": "Quais áreas participam?",
+                "obrigatoria": True,
+                "resposta": "O setor responsável faz a análise",
+                "processo_nome": "Licença de Demolição",
+            },
+            format="json",
+        )
+        assert res_vaga.status_code == status.HTTP_200_OK
+        body = res_vaga.json()
+        assert body["status"] == "vaga"
+        assert "qual setor" in body["mensagem_feedback"]
+
+    # 4. Verifica se os 3 logs foram gravados no banco de dados
+    from core.models import LogValidacaoRespostaEntrevista
+
+    logs = list(LogValidacaoRespostaEntrevista.objects.filter(usuario=operador_user))
+    assert len(logs) == 3
+    assert [lg.status for lg in logs] == ["invalida", "valida", "vaga"]
+    assert [lg.origem for lg in logs] == ["heuristica_local", "heuristica_local", "ia_llm"]
+    assert logs[2].processo_nome == "Licença de Demolição"
+
+
+
