@@ -474,4 +474,24 @@ class PerguntaEntrevistaSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class ValidarRespostaEntrevistaSerializer(serializers.Serializer):
+    """DTO para validação semântica de uma resposta individual da entrevista guiada."""
+
+    chave_pergunta = serializers.CharField(max_length=50)
+    titulo_pergunta = serializers.CharField(max_length=150)
+    enunciado_pergunta = serializers.CharField()
+    obrigatoria = serializers.BooleanField(default=False)
+    resposta = serializers.CharField(allow_blank=True, required=False, default='')
+    processo_id = serializers.CharField(allow_blank=True, required=False, default='')
+    processo_nome = serializers.CharField(allow_blank=True, required=False, default='')
+    processo_setor = serializers.CharField(allow_blank=True, required=False, default='')
+    processo_objetivo = serializers.CharField(allow_blank=True, required=False, default='')
+    respostas_anteriores = serializers.DictField(
+        child=serializers.CharField(allow_blank=True),
+        required=False,
+        default=dict,
+    )
+
+
+
 

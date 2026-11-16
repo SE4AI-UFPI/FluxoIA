@@ -19,6 +19,7 @@ from .serializers import (
     RegisterSerializer,
     RevisaoGovernancaSerializer,
     UserSerializer,
+    ValidarRespostaEntrevistaSerializer,
     VersaoFluxoBPMNSerializer,
 )
 from .services import bpmn_ai_service, process_service, user_service
@@ -341,4 +342,36 @@ class PerguntaEntrevistaViewSet(viewsets.ModelViewSet):
 
         perguntas = PerguntaEntrevista.objects.all().order_by('ordem')
         return Response(self.get_serializer(perguntas, many=True).data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='validar-resposta',
+        permission_classes=[IsAuthenticated],
+    )
+    def validar_resposta(self, request):
+        """
+        POST /api/perguntas-entrevista/validar-resposta/
+        Avalia se a resposta dada pelo usuário a uma pergunta da entrevista é válida, vaga ou inválida.
+        """
+        serializer = ValidarRespostaEntrevistaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+
+        resultado = bpmn_ai_service.validar_resposta_entrevista_com_ia(
+            chave_pergunta=dados['chave_pergunta'],
+            titulo_pergunta=dados['titulo_pergunta'],
+            enunciado_pergunta=dados['enunciado_pergunta'],
+            obrigatoria=dados['obrigatoria'],
+            resposta=dados.get('resposta', ''),
+            processo_id=dados.get('processo_id', ''),
+            processo_nome=dados.get('processo_nome', ''),
+            processo_setor=dados.get('processo_setor', ''),
+            processo_objetivo=dados.get('processo_objetivo', ''),
+            respostas_anteriores=dados.get('respostas_anteriores') or {},
+            usuario=request.user,
+            usuario_email=getattr(request.user, 'email', None),
+        )
+        return Response(resultado.model_dump(), status=status.HTTP_200_OK)
+
 

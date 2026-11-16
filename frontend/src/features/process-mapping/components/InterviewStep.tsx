@@ -1,19 +1,26 @@
 import * as React from 'react'
 import {
+  AlertTriangle,
   ArrowLeft,
   Bot,
   Check,
   Edit2,
+  Loader2,
   Save,
   Send,
   SkipForward,
+  Sparkles,
   User,
   X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import type { InterviewQuestion } from '../services/interview.service'
+import {
+  type AnswerValidationResult,
+  type InterviewQuestion,
+  validarRespostaEntrevista,
+} from '../services/interview.service'
 import type { InterviewAnswerKey } from '../types/process.types'
 import { InterviewReadOnly } from './ProcessReadOnly'
 import type { InterviewExportContext } from '../services/interview-export.service'
@@ -30,6 +37,12 @@ type InterviewStepProps = {
   onFinish: () => void
   readOnly?: boolean
   exportContext?: InterviewExportContext
+  processContext?: {
+    id?: string
+    name: string
+    sector: string
+    objective: string
+  }
 }
 
 export function InterviewStep(props: InterviewStepProps) {
@@ -39,6 +52,7 @@ export function InterviewStep(props: InterviewStepProps) {
 
 function EditableInterviewStep({
   exportContext,
+  processContext,
   questions,
   answers,
   questionIndex,
@@ -53,6 +67,8 @@ function EditableInterviewStep({
   const [inputText, setInputText] = React.useState('')
   const [editingKey, setEditingKey] = React.useState<InterviewAnswerKey | null>(null)
   const [revealedQuestionId, setRevealedQuestionId] = React.useState<InterviewAnswerKey | null>(null)
+  const [isValidating, setIsValidating] = React.useState(false)
+  const [validationFeedback, setValidationFeedback] = React.useState<AnswerValidationResult | null>(null)
 
   const chatContainerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
@@ -86,6 +102,7 @@ function EditableInterviewStep({
   // Iniciar edição de uma pergunta
   function startEditing(key: InterviewAnswerKey) {
     setEditingKey(key)
+    setValidationFeedback(null)
     setInputText(answers[key] ?? '')
     setTimeout(() => {
       inputRef.current?.focus()
@@ -95,11 +112,13 @@ function EditableInterviewStep({
 
   function cancelEditing() {
     setEditingKey(null)
+    setValidationFeedback(null)
     setInputText(answers[currentQuestion?.id] ?? '')
   }
 
   // Sincroniza o texto do input quando muda de pergunta no fluxo normal
   React.useEffect(() => {
+    setValidationFeedback(null)
     if (!editingKey && currentQuestion) {
       setInputText(answers[currentQuestion.id] ?? '')
     }
@@ -133,24 +152,15 @@ function EditableInterviewStep({
   const isInterviewComplete = isAtLastQuestion && isLastQuestionAnswered && allRequiredAnswered
   const progressPercent = Math.round((answeredCount / Math.max(1, currentQuestions.length)) * 100)
 
-  // Envio de resposta
-  function handleSend() {
-    if (isTyping && !editingKey) return
-    const targetKey = editingKey || currentQuestion.id
-    const trimmed = inputText.trim()
-
-    if (!trimmed && currentQuestions.find((q) => q.id === targetKey)?.required) {
-      return
-    }
-
+  function commitAnswer(targetKey: InterviewAnswerKey, textValue: string) {
+    setValidationFeedback(null)
     focusAfterAnswerRef.current = true
-    onAnswer(targetKey, trimmed)
+    onAnswer(targetKey, textValue)
 
     if (editingKey) {
       setEditingKey(null)
       setInputText('')
     } else {
-      // Avança para a próxima pergunta se não for a última
       if (currentQuestionIndex < currentQuestions.length - 1) {
         onQuestionChange(currentQuestionIndex + 1)
       }
@@ -158,8 +168,52 @@ function EditableInterviewStep({
     }
   }
 
+  // Envio de resposta com validação semântica por IA
+  async function handleSend() {
+    if ((isTyping && !editingKey) || isValidating) return
+    const targetKey = editingKey || currentQuestion.id
+    const targetQuestion = currentQuestions.find((q) => q.id === targetKey) || currentQuestion
+    const trimmed = inputText.trim()
+
+    if (!trimmed && targetQuestion.required) {
+      return
+    }
+
+    if (!trimmed && !targetQuestion.required) {
+      commitAnswer(targetKey, '')
+      return
+    }
+
+    setIsValidating(true)
+    setValidationFeedback(null)
+
+    const result = await validarRespostaEntrevista({
+      chave_pergunta: targetQuestion.id,
+      titulo_pergunta: targetQuestion.title,
+      enunciado_pergunta: targetQuestion.prompt,
+      obrigatoria: targetQuestion.required,
+      resposta: trimmed,
+      processo_id: processContext?.id || '',
+      processo_nome: processContext?.name || exportContext?.name || '',
+      processo_setor: processContext?.sector || exportContext?.sector || '',
+      processo_objetivo: processContext?.objective || '',
+      respostas_anteriores: answers,
+    })
+
+    setIsValidating(false)
+
+    if (result.status === 'valida') {
+      commitAnswer(targetKey, trimmed)
+      return
+    }
+
+    setValidationFeedback(result)
+    setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
   function handleSkip() {
-    if (isTyping || currentQuestion.required) return
+    if (isTyping || isValidating || currentQuestion.required) return
+    setValidationFeedback(null)
     focusAfterAnswerRef.current = true
     if (!answers[currentQuestion.id]) {
       onAnswer(currentQuestion.id, '')
@@ -172,7 +226,7 @@ function EditableInterviewStep({
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -363,14 +417,66 @@ function EditableInterviewStep({
                 </div>
               )}
 
+              {validationFeedback && validationFeedback.status !== 'valida' && (
+                <div
+                  role="alert"
+                  className={`mb-3 rounded-lg border p-3 text-xs space-y-2 ${
+                    validationFeedback.status === 'invalida'
+                      ? 'border-fx-alerta/40 bg-fx-alerta/10 text-fx-marinho'
+                      : 'border-amber-400/60 bg-amber-50 text-fx-marinho'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    {validationFeedback.status === 'invalida' ? (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-fx-alerta mt-0.5" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                    )}
+                    <div className="space-y-1 flex-1">
+                      <p className="font-semibold">
+                        {validationFeedback.status === 'invalida'
+                          ? 'A assistente identificou que esta resposta precisa ser reformulada:'
+                          : 'Sugestão da IA para enriquecer o seu diagrama BPMN:'}
+                      </p>
+                      <p className="text-fx-grafite leading-relaxed">
+                        {validationFeedback.mensagem_feedback}
+                      </p>
+                      {validationFeedback.sugestao_melhoria && (
+                        <p className="text-fx-cinza italic">
+                          💡 Dica: {validationFeedback.sugestao_melhoria}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {validationFeedback.status === 'vaga' && (
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs bg-white"
+                        onClick={() =>
+                          commitAnswer(editingKey || currentQuestion.id, inputText.trim())
+                        }
+                      >
+                        Manter resposta mesmo assim e avançar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-end gap-2">
                 <textarea
                   ref={inputRef}
                   rows={2}
-                  readOnly={isTyping && !editingKey}
+                  readOnly={(isTyping && !editingKey) || isValidating}
                   aria-label={editingKey ? 'Editar resposta' : 'Sua resposta'}
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={(e) => {
+                    setInputText(e.target.value)
+                    if (validationFeedback) setValidationFeedback(null)
+                  }}
                   onKeyDown={handleKeyDown}
                   placeholder={
                     editingKey
@@ -392,7 +498,7 @@ function EditableInterviewStep({
                     variant="ghost"
                     size="sm"
                     onClick={handleSkip}
-                    disabled={isTyping}
+                    disabled={isTyping || isValidating}
                     className="h-10 text-xs text-fx-cinza hover:text-fx-marinho"
                     title="Pular pergunta opcional"
                   >
@@ -403,17 +509,28 @@ function EditableInterviewStep({
 
                 <Button
                   type="button"
-                  onClick={handleSend}
+                  onClick={() => void handleSend()}
                   disabled={
-                    (isTyping && !editingKey) || Boolean(
+                    (isTyping && !editingKey) ||
+                    isValidating ||
+                    Boolean(
                       currentQuestions.find((q) => q.id === (editingKey || currentQuestion.id))
                         ?.required && !inputText.trim(),
                     )
                   }
                   className="h-10 px-4"
                 >
-                  {editingKey ? <Check className="h-4 w-4 mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
-                  {editingKey ? 'Salvar Alteração' : 'Enviar'}
+                  {isValidating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      Analisando...
+                    </>
+                  ) : (
+                    <>
+                      {editingKey ? <Check className="h-4 w-4 mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
+                      {editingKey ? 'Salvar Alteração' : 'Enviar'}
+                    </>
+                  )}
                 </Button>
               </div>
             </>

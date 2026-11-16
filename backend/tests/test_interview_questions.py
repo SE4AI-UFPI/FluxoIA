@@ -140,3 +140,154 @@ def test_admin_soft_delete_pergunta(admin_user, perguntas_iniciais):
     assert res.status_code == status.HTTP_200_OK
     p1.refresh_from_db()
     assert p1.ativa is False
+
+
+@pytest.mark.django_db
+def test_metricas_piloto_e_latencia_meta_ia(operador_user, perguntas_iniciais):
+    from io import StringIO
+    from django.core.management import call_command
+    from core.models import EntrevistaProcesso, FeedbackFluxoIA, Processo, StatusProcesso
+    from core.services.bpmn_ai_service import gerar_fluxo_bpmn_com_ia
+    from core.services.llm_client import LLMCompletionResult
+
+    processo = Processo.objects.create(
+        codigo="BPMN-PILOTO-001",
+        nome="Processo de Teste Piloto",
+        secretaria="SECTI",
+        setor="SDU: Protocolo",
+        objetivo="Testar extração de métricas",
+        status=StatusProcesso.EM_MODELAGEM,
+        criado_por=operador_user,
+    )
+    EntrevistaProcesso.objects.create(
+        processo=processo,
+        respostas={"trigger": "Requerimento inicial", "activities": "Triagem e análise"},
+    )
+
+    class FakeLLMClient:
+        def gerar_json(self, **kwargs):
+            return (
+                {
+                    "resumo_modelo": "Fluxo simples",
+                    "raias": [{"id": "Lane_1", "nome": "SDU: Protocolo"}],
+                    "elementos": [
+                        {"id": "Start_1", "tipo": "startEvent", "nome": "Início", "raia_id": "Lane_1"},
+                        {"id": "Task_1", "tipo": "task", "nome": "1. Analisar", "raia_id": "Lane_1"},
+                        {"id": "End_1", "tipo": "endEvent", "nome": "Fim", "raia_id": "Lane_1"},
+                    ],
+                    "fluxos": [
+                        {"id": "Flow_1", "origem": "Start_1", "destino": "Task_1"},
+                        {"id": "Flow_2", "origem": "Task_1", "destino": "End_1"},
+                    ],
+                },
+                LLMCompletionResult(
+                    content="{}",
+                    model="deepseek-chat",
+                    provider="openai_compatible",
+                    usage={"total_tokens": 1500},
+                ),
+            )
+
+    versao = gerar_fluxo_bpmn_com_ia(
+        processo=processo,
+        usuario=operador_user,
+        llm_client=FakeLLMClient(),
+    )
+    meta_ia = versao.estrutura_json.get("meta_ia", {})
+    assert "latencia_segundos" in meta_ia
+    assert isinstance(meta_ia["latencia_segundos"], float)
+
+    FeedbackFluxoIA.objects.create(
+        processo=processo,
+        versao_bpmn=versao,
+        autor=operador_user,
+        representa_processo=True,
+        nota_precisao_geral=5,
+        clareza_entrevista=4,
+    )
+
+    out = StringIO()
+    call_command("metricas_piloto", stdout=out)
+    output_text = out.getvalue()
+    assert "RELATÓRIO DE MÉTRICAS DO PILOTO CONTROLADO" in output_text
+    assert "[SISTEMA]  Latência de geração IA" in output_text
+    assert "BPMN-PILOTO-001" in output_text
+
+
+@pytest.mark.django_db
+def test_validacao_resposta_entrevista_heuristica_e_ia(operador_user):
+    from unittest.mock import patch
+    from core.services.bpmn_ai_service import ValidacaoRespostaIA
+
+    client = APIClient()
+    client.force_authenticate(user=operador_user)
+
+    # 1. Ruído óbvio ("asdf") deve retornar invalida imediatamente sem chamar LLM
+    res_ruido = client.post(
+        "/api/perguntas-entrevista/validar-resposta/",
+        {
+            "chave_pergunta": "trigger",
+            "titulo_pergunta": "Início do Processo",
+            "enunciado_pergunta": "O que dá início ao processo?",
+            "obrigatoria": True,
+            "resposta": "asdf",
+        },
+        format="json",
+    )
+    assert res_ruido.status_code == status.HTTP_200_OK
+    assert res_ruido.json()["status"] == "invalida"
+
+    # 2. Resposta negativa curta ("Não há") em pergunta de taxas deve ser aprovada na hora
+    res_taxa = client.post(
+        "/api/perguntas-entrevista/validar-resposta/",
+        {
+            "chave_pergunta": "fees",
+            "titulo_pergunta": "Taxas e Custos",
+            "enunciado_pergunta": "Envolve cobrança de taxas?",
+            "obrigatoria": False,
+            "resposta": "Não há",
+        },
+        format="json",
+    )
+    assert res_taxa.status_code == status.HTTP_200_OK
+    assert res_taxa.json()["status"] == "valida"
+
+    # 3. Resposta vaga avaliada pela IA
+    with patch("core.services.bpmn_ai_service.LLMClient") as mock_llm_cls:
+        mock_instance = mock_llm_cls.return_value
+        mock_instance.gerar_json.return_value = (
+            {
+                "status": "vaga",
+                "mensagem_feedback": "Você citou que o setor analisa, mas não especificou qual setor.",
+                "sugestao_melhoria": "Informe o nome da coordenação ou diretoria responsável.",
+            },
+            None,
+        )
+        res_vaga = client.post(
+            "/api/perguntas-entrevista/validar-resposta/",
+            {
+                "chave_pergunta": "areasInvolved",
+                "titulo_pergunta": "Áreas e Unidades Envolvidas",
+                "enunciado_pergunta": "Quais áreas participam?",
+                "obrigatoria": True,
+                "resposta": "O setor responsável faz a análise",
+                "processo_nome": "Licença de Demolição",
+            },
+            format="json",
+        )
+        assert res_vaga.status_code == status.HTTP_200_OK
+        body = res_vaga.json()
+        assert body["status"] == "vaga"
+        assert "qual setor" in body["mensagem_feedback"]
+
+    # 4. Verifica se os 3 logs foram gravados no banco de dados
+    from core.models import LogValidacaoRespostaEntrevista
+
+    logs = list(LogValidacaoRespostaEntrevista.objects.filter(usuario=operador_user))
+    assert len(logs) == 3
+    assert [lg.status for lg in logs] == ["invalida", "valida", "vaga"]
+    assert [lg.origem for lg in logs] == ["heuristica_local", "heuristica_local", "ia_llm"]
+    assert logs[2].processo_nome == "Licença de Demolição"
+
+
+

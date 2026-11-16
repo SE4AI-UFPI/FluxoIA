@@ -1,4 +1,5 @@
 from collections import defaultdict, deque
+import time
 from typing import Literal
 from xml.sax.saxutils import escape
 from pydantic import BaseModel, Field, ValidationError
@@ -540,12 +541,14 @@ def gerar_fluxo_bpmn_com_ia(
     client = llm_client or LLMClient()
     user_prompt = montar_prompt_usuario(processo, respostas)
 
+    inicio_chamada = time.perf_counter()
     dados_json, completion_res = client.gerar_json(
         system_prompt=SYSTEM_PROMPT_BPMN,
         user_prompt=user_prompt,
         temperature=0.1,
         usuario_identificador=usuario.email,
     )
+    latencia_segundos = round(time.perf_counter() - inicio_chamada, 2)
 
     try:
         estrutura = BpmnEstruturaGerada.model_validate(dados_json)
@@ -571,6 +574,7 @@ def gerar_fluxo_bpmn_com_ia(
             'provider': completion_res.provider,
             'model': completion_res.model,
             'usage': completion_res.usage,
+            'latencia_segundos': latencia_segundos,
         },
     }
 
@@ -585,3 +589,284 @@ def gerar_fluxo_bpmn_com_ia(
             'motivo_alteracao': motivo,
         },
     )
+
+
+class ValidacaoRespostaIA(BaseModel):
+    status: Literal['valida', 'vaga', 'invalida'] = Field(
+        default='valida',
+        description="Classificação da resposta: 'valida' (adequada), 'vaga' (faz sentido mas falta detalhe importante para o BPMN) ou 'invalida' (sem sentido, contraditória ou fora de contexto).",
+    )
+    mensagem_feedback: str = Field(
+        default='',
+        description='Explicação curta, cordial e direta sobre o motivo de a resposta estar vaga ou inválida (vazio se valida).',
+    )
+    sugestao_melhoria: str = Field(
+        default='',
+        description='Orientação prática ou exemplo curto do que acrescentar para enriquecer o mapeamento BPMN (vazio se valida).',
+    )
+
+
+SYSTEM_PROMPT_VALIDACAO_RESPOSTA = """Você é um analista especialista em mapeamento de processos em BPMN 2.0.
+Sua tarefa é avaliar rapidamente se a resposta dada pelo usuário a uma pergunta da entrevista guiada faz sentido em relação ao TÍTULO e ao ENUNCIADO da pergunta (definidos dinamicamente pelo administrador) e ao contexto do processo.
+
+CRITÉRIOS DE CLASSIFICAÇÃO:
+1. "invalida":
+   - Textos sem sentido, ruído de teclado ("asdf", "123", "..."), evasivas ("não sei", "qualquer coisa", "teste") ou respostas que fogem completamente ao que o ENUNCIADO da pergunta pediu e ao contexto do processo.
+   - Respostas contraditórias ou que não respondem minimamente ao que foi perguntado.
+
+2. "vaga":
+   - A resposta aborda o tema perguntado no ENUNCIADO, mas é excessivamente genérica, superficial ou omite partes essenciais que o próprio ENUNCIADO solicitou (ex: o enunciado pede para identificar nomes específicos, etapas, critérios ou responsáveis e o usuário responde de forma indefinida sem especificá-los).
+   - A resposta ignora ou contradiz elementos importantes que o próprio usuário já havia mencionado nas respostas anteriores da entrevista.
+
+3. "valida":
+   - A resposta atende de forma coerente e compreensível ao que o ENUNCIADO da pergunta solicitou, mesmo que seja concisa e direta.
+   - IMPORTANTE: Se o próprio ENUNCIADO perguntar se determinado aspecto existe/ocorre no processo (ou se a pergunta estiver marcada como "Obrigatória: Não") e o usuário responder claramente que não existe ou não se aplica ao processo, classifique como "valida". Não seja excessivamente rígido nem exija perfeição acadêmica.
+
+FORMATO DE RETORNO OBRIGATÓRIO (JSON PURO):
+{
+  "status": "valida" | "vaga" | "invalida",
+  "mensagem_feedback": "Frase curta explicando o ponto de atenção com base no enunciado da pergunta (ou string vazia se valida)",
+  "sugestao_melhoria": "Dica prática do que informar para atender ao enunciado da pergunta (ou string vazia se valida)"
+}
+"""
+
+RESPOSTAS_NEGATIVAS_VALIDAS = {
+    'nao',
+    'não',
+    'nao ha',
+    'não há',
+    'nao possui',
+    'não possui',
+    'nao tem',
+    'não tem',
+    'nao se aplica',
+    'não se aplica',
+    'n/a',
+    'nenhum',
+    'nenhuma',
+}
+
+PADROES_RUIDO = {
+    'teste',
+    'test',
+    'asdf',
+    'qwerty',
+    'blablabla',
+    'qualquer coisa',
+    'nao sei',
+    'não sei',
+    'sei la',
+    'sei lá',
+}
+
+
+def _registrar_log_validacao_entrevista(
+    *,
+    usuario: User | None,
+    processo_id: str | None,
+    processo_nome: str,
+    chave_pergunta: str,
+    titulo_pergunta: str,
+    obrigatoria: bool,
+    resposta_enviada: str,
+    validacao: ValidacaoRespostaIA,
+    origem: str,
+    latencia_segundos: float = 0.0,
+    tokens_totais: int = 0,
+) -> None:
+    try:
+        from core.models import LogValidacaoRespostaEntrevista
+
+        proc_obj = None
+        if processo_id:
+            proc_obj = Processo.objects.filter(pk=processo_id).first()
+
+        LogValidacaoRespostaEntrevista.objects.create(
+            usuario=usuario if (usuario and getattr(usuario, 'is_authenticated', False)) else None,
+            processo=proc_obj,
+            processo_nome=(proc_obj.nome if proc_obj else processo_nome)[:200],
+            chave_pergunta=chave_pergunta[:50],
+            titulo_pergunta=titulo_pergunta[:150],
+            obrigatoria=obrigatoria,
+            resposta_enviada=resposta_enviada,
+            status=validacao.status,
+            origem=origem,
+            mensagem_feedback=validacao.mensagem_feedback,
+            sugestao_melhoria=validacao.sugestao_melhoria,
+            latencia_segundos=latencia_segundos,
+            tokens_totais=tokens_totais,
+        )
+    except Exception:
+        # Falha ao gravar log de telemetria nunca deve interromper o fluxo do usuário
+        pass
+
+
+def validar_resposta_entrevista_com_ia(
+    *,
+    chave_pergunta: str,
+    titulo_pergunta: str,
+    enunciado_pergunta: str,
+    obrigatoria: bool,
+    resposta: str,
+    processo_id: str | None = None,
+    processo_nome: str = '',
+    processo_setor: str = '',
+    processo_objetivo: str = '',
+    respostas_anteriores: dict[str, str] | None = None,
+    usuario: User | None = None,
+    usuario_email: str | None = None,
+    llm_client: LLMClient | None = None,
+) -> ValidacaoRespostaIA:
+    """
+    Avalia a pertinência e suficiência de uma resposta individual da entrevista guiada.
+    Combina heurística determinística rápida (0ms) com avaliação semântica via LLM
+    e persiste o log de avaliação no banco de dados.
+    """
+    import re
+
+    texto = (resposta or '').strip()
+    email_id = usuario_email or (getattr(usuario, 'email', None) if usuario else None)
+
+    # 1. Caso vazio
+    if not texto:
+        if not obrigatoria:
+            res = ValidacaoRespostaIA(status='valida')
+        else:
+            res = ValidacaoRespostaIA(
+                status='invalida',
+                mensagem_feedback='Esta pergunta é obrigatória para estruturar o diagrama BPMN.',
+                sugestao_melhoria=f'Por favor, responda ao que é solicitado em "{titulo_pergunta}".',
+            )
+        _registrar_log_validacao_entrevista(
+            usuario=usuario,
+            processo_id=processo_id,
+            processo_nome=processo_nome,
+            chave_pergunta=chave_pergunta,
+            titulo_pergunta=titulo_pergunta,
+            obrigatoria=obrigatoria,
+            resposta_enviada=texto,
+            validacao=res,
+            origem='heuristica_local',
+        )
+        return res
+
+    texto_norm = texto.lower().strip(' .,!?;:-')
+
+    # 2. Qualquer pergunta configurada pelo Admin como NÃO obrigatória (obrigatoria=False)
+    # que receba uma resposta negativa ("Não há / Não se aplica") é aprovada imediatamente.
+    if not obrigatoria and texto_norm in RESPOSTAS_NEGATIVAS_VALIDAS:
+        res = ValidacaoRespostaIA(status='valida')
+        _registrar_log_validacao_entrevista(
+            usuario=usuario,
+            processo_id=processo_id,
+            processo_nome=processo_nome,
+            chave_pergunta=chave_pergunta,
+            titulo_pergunta=titulo_pergunta,
+            obrigatoria=obrigatoria,
+            resposta_enviada=texto,
+            validacao=res,
+            origem='heuristica_local',
+        )
+        return res
+
+    # 3. Filtro rápido anti-ruído (evita gastar chamada de IA com lixo óbvio)
+    somente_alfa = re.sub(r'[^a-zA-ZÀ-ÿ]', '', texto_norm)
+    if (
+        texto_norm in PADROES_RUIDO
+        or len(somente_alfa) < 3
+        or len(set(somente_alfa)) <= 1
+    ):
+        res = ValidacaoRespostaIA(
+            status='invalida',
+            mensagem_feedback='A resposta informada é muito curta ou não contém informações válidas para o mapeamento.',
+            sugestao_melhoria=f'Descreva com suas palavras como ocorre a etapa de "{titulo_pergunta}" no processo.',
+        )
+        _registrar_log_validacao_entrevista(
+            usuario=usuario,
+            processo_id=processo_id,
+            processo_nome=processo_nome,
+            chave_pergunta=chave_pergunta,
+            titulo_pergunta=titulo_pergunta,
+            obrigatoria=obrigatoria,
+            resposta_enviada=texto,
+            validacao=res,
+            origem='heuristica_local',
+        )
+        return res
+
+    # 4. Chamada semântica ao modelo de IA
+    historico_linhas = []
+    for k, v in (respostas_anteriores or {}).items():
+        if k != chave_pergunta and isinstance(v, str) and v.strip():
+            historico_linhas.append(f'- [{k}]: {v.strip()}')
+    bloco_historico = '\n'.join(historico_linhas) if historico_linhas else 'Nenhuma resposta anterior registrada.'
+
+    user_prompt = f"""CONTEXTO DO PROCESSO:
+- Nome: {processo_nome or 'Não informado'}
+- Setor Principal: {processo_setor or 'Não informado'}
+- Objetivo: {processo_objetivo or 'Não informado'}
+
+RESPOSTAS ANTERIORES JÁ PREENCHIDAS PELO USUÁRIO:
+{bloco_historico}
+
+PERGUNTA ATUAL DA ENTREVISTA:
+- Chave: {chave_pergunta}
+- Título: {titulo_pergunta}
+- Obrigatória: {'Sim' if obrigatoria else 'Não'}
+- Enunciado: {enunciado_pergunta}
+
+RESPOSTA ENVIADA PELO USUÁRIO:
+"{texto}"
+
+Avalie a resposta e retorne o JSON estrito com status ("valida", "vaga" ou "invalida"), mensagem_feedback e sugestao_melhoria."""
+
+    client = llm_client or LLMClient()
+    inicio = time.perf_counter()
+    try:
+        dados_json, completion_res = client.gerar_json(
+            system_prompt=SYSTEM_PROMPT_VALIDACAO_RESPOSTA,
+            user_prompt=user_prompt,
+            temperature=0.0,
+            usuario_identificador=email_id,
+        )
+        latencia = round(time.perf_counter() - inicio, 2)
+        usage = getattr(completion_res, 'usage', None) or {}
+        tot_tokens = int(usage.get('total_tokens') or 0)
+
+        validacao = ValidacaoRespostaIA.model_validate(dados_json)
+        if validacao.status == 'valida':
+            validacao.mensagem_feedback = ''
+            validacao.sugestao_melhoria = ''
+
+        _registrar_log_validacao_entrevista(
+            usuario=usuario,
+            processo_id=processo_id,
+            processo_nome=processo_nome,
+            chave_pergunta=chave_pergunta,
+            titulo_pergunta=titulo_pergunta,
+            obrigatoria=obrigatoria,
+            resposta_enviada=texto,
+            validacao=validacao,
+            origem='ia_llm',
+            latencia_segundos=latencia,
+            tokens_totais=tot_tokens,
+        )
+        return validacao
+    except Exception:
+        # Fallback resiliente: se a API de IA falhar ou atrasar, não bloqueia o usuário
+        latencia = round(time.perf_counter() - inicio, 2)
+        res_fallback = ValidacaoRespostaIA(status='valida')
+        _registrar_log_validacao_entrevista(
+            usuario=usuario,
+            processo_id=processo_id,
+            processo_nome=processo_nome,
+            chave_pergunta=chave_pergunta,
+            titulo_pergunta=titulo_pergunta,
+            obrigatoria=obrigatoria,
+            resposta_enviada=texto,
+            validacao=res_fallback,
+            origem='fallback_erro_ia',
+            latencia_segundos=latencia,
+        )
+        return res_fallback
+
