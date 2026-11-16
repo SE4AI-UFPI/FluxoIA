@@ -432,6 +432,12 @@ export function ProcessMappingPage() {
               updatedAt: process.updatedAt,
               authorName: user.nome,
             }}
+            processContext={{
+              id: process.id,
+              name: process.info.name,
+              sector: process.info.sector,
+              objective: process.info.objective,
+            }}
             questions={questions}
             answers={process.answers}
             questionIndex={process.questionIndex}

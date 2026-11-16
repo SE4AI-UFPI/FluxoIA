@@ -150,6 +150,40 @@ export async function reordenarPerguntasAdmin(ordemIds: string[]): Promise<ApiIn
   })
 }
 
+export type AnswerValidationStatus = 'valida' | 'vaga' | 'invalida'
+
+export interface AnswerValidationResult {
+  status: AnswerValidationStatus
+  mensagem_feedback: string
+  sugestao_melhoria: string
+}
+
+export interface ValidateAnswerPayload {
+  chave_pergunta: string
+  titulo_pergunta: string
+  enunciado_pergunta: string
+  obrigatoria: boolean
+  resposta: string
+  processo_id?: string
+  processo_nome?: string
+  processo_setor?: string
+  processo_objetivo?: string
+  respostas_anteriores?: Record<string, string>
+}
+
+export async function validarRespostaEntrevista(
+  payload: ValidateAnswerPayload,
+): Promise<AnswerValidationResult> {
+  try {
+    return await apiClient.post<AnswerValidationResult>(
+      '/api/perguntas-entrevista/validar-resposta/',
+      payload,
+    )
+  } catch {
+    return { status: 'valida', mensagem_feedback: '', sugestao_melhoria: '' }
+  }
+}
+
 export function getInterviewProgress(questionIndex: number, totalQuestions: number): number {
   if (totalQuestions <= 0) return 0
   return Math.round(((questionIndex + 1) / totalQuestions) * 100)
