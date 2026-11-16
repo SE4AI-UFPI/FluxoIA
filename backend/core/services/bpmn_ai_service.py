@@ -1,4 +1,5 @@
 from collections import defaultdict, deque
+import time
 from typing import Literal
 from xml.sax.saxutils import escape
 from pydantic import BaseModel, Field, ValidationError
@@ -540,12 +541,14 @@ def gerar_fluxo_bpmn_com_ia(
     client = llm_client or LLMClient()
     user_prompt = montar_prompt_usuario(processo, respostas)
 
+    inicio_chamada = time.perf_counter()
     dados_json, completion_res = client.gerar_json(
         system_prompt=SYSTEM_PROMPT_BPMN,
         user_prompt=user_prompt,
         temperature=0.1,
         usuario_identificador=usuario.email,
     )
+    latencia_segundos = round(time.perf_counter() - inicio_chamada, 2)
 
     try:
         estrutura = BpmnEstruturaGerada.model_validate(dados_json)
@@ -571,6 +574,7 @@ def gerar_fluxo_bpmn_com_ia(
             'provider': completion_res.provider,
             'model': completion_res.model,
             'usage': completion_res.usage,
+            'latencia_segundos': latencia_segundos,
         },
     }
 
