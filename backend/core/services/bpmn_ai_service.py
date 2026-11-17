@@ -85,24 +85,29 @@ DIRETRIZES DE MODELAGEM BPMN:
    - Se for processo gratuito ou interno sem taxas: NÃO crie tarefas de pagamento e registre no campo `taxas`: ["Não se aplica / Processo sem taxas"].
 4. PENDÊNCIAS, EXCEÇÕES E PRAZOS:
    - Modele gateways exclusivos para pontos de conferência/vistoria e gere o ramo de pendência/notificação e saneamento.
-   - No campo `observacoes_prazo` da ficha técnica, registre claramente o prazo limite informado (ex: "Todas as pendências deverão ser solucionadas em até 90 dias. Após esse prazo, o processo será encerrado.").
+   - No campo `observacoes_prazo` da ficha técnica, registre os prazos estipulados informados pelo entrevistado (ou deixe vazio se não informados).
 5. FICHA TÉCNICA INSTITUCIONAL (QUADROS DE RODAPÉ):
    - Preencha os campos `ficha_tecnica` (`legenda`, `observacoes_prazo`, `informacoes_gerais`, `sistemas`, `documentacao`, `taxas`) para permitir a exibição da folha completa do processo.
+6. FIDELIDADE FACTUAL ESTATUTÁRIA (ANTI-ALUCINAÇÃO):
+   - NUNCA invente prazos numéricos (ex: 15, 30, 60, 90 dias). Se o entrevistado disse apenas "no prazo", "dentro do prazo" ou não citou número de dias, use rótulos neutros nas transições como "Prazo esgotado" ou "Fora do prazo".
+   - NUNCA invente siglas de órgãos ou secretarias (como SDU, SEMF, PREG, etc.) que não existam explicitamente nos dados do processo ou nas respostas.
+   - NUNCA invente sistemas (ex: SEI, SIGAA) ou taxas se o entrevistado não os mencionou.
+   - NUNCA copie valores literais que aparecem como modelo no exemplo estrutural abaixo. O exemplo serve estritamente para ilustrar a ESTRUTURA de chaves e tipos do JSON.
 
 FORMATO DE RETORNO OBRIGATÓRIO (JSON PURO):
 {
   "resumo_modelo": "Explicação concisa das raias e decisões modeladas",
   "ficha_tecnica": {
-    "legenda": ["▲ Caso seja notificado / Em caso de pendência", "▼ Caso seja autuado"],
-    "observacoes_prazo": "Todas as pendências deverão ser solucionadas em até 90 dias. Após esse prazo, o processo será encerrado.",
-    "informacoes_gerais": "Finalidade e fundamentação legal do processo.",
-    "sistemas": ["Plataforma SEI"],
-    "documentacao": ["Requerimento", "Documento de identificação com foto", "Comprovante de endereço"],
-    "taxas": ["Taxa de Serviço (Cód.: 71130004)"]
+    "legenda": ["Legendas e símbolos de desvio identificados na modelagem"],
+    "observacoes_prazo": "Prazos limites informados na entrevista, ou vazio se não houver prazos especificados",
+    "informacoes_gerais": "Finalidade e fundamentação legal informadas nos dados do processo",
+    "sistemas": ["Sistemas mencionados na entrevista"],
+    "documentacao": ["Documentos e anexos mencionados na entrevista"],
+    "taxas": ["Taxas mencionadas na entrevista ou 'Não se aplica / Processo sem taxas'"]
   },
   "raias": [
-    { "id": "Lane_1", "nome": "Requerente" },
-    { "id": "Lane_2", "nome": "SDU: Protocolo" }
+    { "id": "Lane_1", "nome": "<Nome do Solicitante ou Unidade Demandante>" },
+    { "id": "Lane_2", "nome": "<Nome do Setor Executor Responsável>" }
   ],
   "elementos": [
     {
