@@ -2,7 +2,6 @@ import * as React from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
-  Bot,
   Check,
   Edit2,
   Loader2,
@@ -13,6 +12,7 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { FluxoBotIcon } from '@/components/icons/FluxoBotIcon'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -247,7 +247,7 @@ function EditableInterviewStep({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-fx-azul/10 text-fx-azul">
-              <Bot className="h-5 w-5" />
+              <FluxoBotIcon className="h-5 w-5" />
             </div>
             <div>
               <CardTitle className="text-lg text-fx-marinho">Assistente FluxoIA · Entrevista Guiada</CardTitle>
@@ -280,7 +280,7 @@ function EditableInterviewStep({
           {/* Mensagem de Boas-vindas do Assistente */}
           <div className="flex items-start gap-3 max-w-[85%]">
             <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-fx-marinho text-white shadow-xs">
-              <Bot className="h-4 w-4" />
+              <FluxoBotIcon className="h-4 w-4" />
             </div>
             <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white p-4 text-sm text-fx-grafite shadow-xs leading-relaxed">
               <p className="font-semibold text-fx-marinho mb-1">Olá! Vamos mapear este processo juntos.</p>
@@ -300,7 +300,7 @@ function EditableInterviewStep({
                 {/* Mensagem da IA com a Pergunta */}
                 <div className="flex items-start gap-3 max-w-[85%]">
                   <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-fx-azul text-white shadow-xs">
-                    <Bot className="h-4 w-4" />
+                    <FluxoBotIcon className="h-4 w-4" />
                   </div>
                   <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white p-4 text-sm text-fx-grafite shadow-xs space-y-1.5">
                     <div className="flex items-center gap-2">
@@ -360,7 +360,7 @@ function EditableInterviewStep({
           {isTyping && (
             <div className="flex max-w-[85%] items-start gap-3" aria-hidden="true">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
-                <Bot className="h-4 w-4" />
+                <FluxoBotIcon className="h-4 w-4" />
               </div>
               <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white px-4 py-3.5 shadow-xs">
                 <span className="sr-only">Assistente preparando a próxima pergunta</span>
