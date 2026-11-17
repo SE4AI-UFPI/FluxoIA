@@ -3,7 +3,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Bot,
   ChevronDown,
   ClipboardCheck,
   Loader2,
@@ -11,6 +10,7 @@ import {
   Sparkles,
   WandSparkles,
 } from 'lucide-react'
+import { FluxoBotIcon } from '@/components/icons/FluxoBotIcon'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -175,7 +175,7 @@ export function BPMNGenerationStep({
         <Card className="border-dashed border-fx-azul/40 bg-fx-nevoa/20">
           <CardContent className="flex flex-col items-center gap-5 py-12 px-4 text-center max-w-2xl mx-auto">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-fx-azul/10 text-fx-azul shadow-xs">
-              {isGenerating ? <Loader2 className="h-8 w-8 animate-spin" /> : <Bot className="h-8 w-8" />}
+              {isGenerating ? <Loader2 className="h-8 w-8 animate-spin" /> : <FluxoBotIcon className="h-8 w-8" />}
             </div>
 
             <div className="space-y-2">
