@@ -26,18 +26,15 @@ export function ProcessFichaTecnicaCards({ process }: { process: ProcessWizardSt
       ? process.answers.exceptions || process.answers.rules
       : 'As pendências deverão ser solucionadas dentro do prazo regimental. Após o prazo sem manifestação, o processo poderá ser encerrado.')
 
-  const rawSistemas =
+  const sistemas =
     ficha?.sistemas && ficha.sistemas.length > 0
       ? ficha.sistemas
       : process.answers.systems
-        ? process.answers.systems.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
-        : ['Plataforma SEI']
-
-  const standardSystems = [
-    { label: 'Plataforma SEI', match: 'sei' },
-    { label: 'Plataforma Construa Fácil', match: 'construa' },
-    { label: 'Processo Físico', match: 'físico|fisico' },
-  ]
+        ? process.answers.systems
+            .split(/[\n,;]+/)
+            .map((s) => s.replace(/^[-•*]\s*/, '').trim())
+            .filter(Boolean)
+        : []
 
   const documentos =
     ficha?.documentacao && ficha.documentacao.length > 0
@@ -127,27 +124,20 @@ export function ProcessFichaTecnicaCards({ process }: { process: ProcessWizardSt
                 <Monitor className="h-3 w-3 text-fx-azul shrink-0" />
                 Canais e Plataformas de Tramitação:
               </p>
-              <div className="space-y-1 text-[11px]">
-                {standardSystems.map((sys) => {
-                  const isActive = rawSistemas.some((s) => new RegExp(sys.match, 'i').test(s))
-                  return (
-                    <div key={sys.label} className="flex items-center gap-2">
-                      <span
-                        className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border text-[9px] font-bold ${
-                          isActive
-                            ? 'border-fx-azul bg-fx-azul text-white'
-                            : 'border-fx-linha bg-white text-transparent'
-                        }`}
-                      >
-                        ✓
-                      </span>
-                      <span className={isActive ? 'font-semibold text-fx-marinho' : 'text-fx-cinza'}>
-                        {sys.label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+              {sistemas.length > 0 ? (
+                <ul className="space-y-1 pl-1 text-[11px]">
+                  {sistemas.map((sys, idx) => (
+                    <li key={idx} className="flex items-start gap-1.5 leading-tight">
+                      <CheckCircle2 className="h-3 w-3 text-fx-azul shrink-0 mt-0.5" />
+                      <span className="font-medium text-fx-marinho">{sys}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] italic text-fx-cinza">
+                  Nenhum sistema específico informado / Tramitação não automatizada
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
