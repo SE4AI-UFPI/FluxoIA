@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 import time
-from typing import Literal
+from typing import Any, Literal
 from xml.sax.saxutils import escape
 from pydantic import BaseModel, Field, ValidationError
 
