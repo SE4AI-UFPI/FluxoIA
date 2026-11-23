@@ -19,8 +19,6 @@ import {
 } from '../services/process.service'
 import {
   canEditBpmnLayout,
-  diagramaPrecisaLayout,
-  gerarLayoutAutomatico,
   MOTIVO_BLOQUEIO_EDICAO,
 } from '../services/bpmn-layout.service'
 import type {
@@ -84,62 +82,12 @@ export function useProcessWizard(user: Usuario) {
   const viewedStep = isReadOnly ? consultationStep ?? process.step : process.step
   const versionControl = useVersionControl()
 
-  /**
-   * Aplica o auto layout ao diagrama gerado e persiste o resultado.
-   *
-   * Nenhuma falha aqui pode interromper a geração: se o layout ou o salvamento
-   * falharem, o estado recebido é devolvido (com o XML organizado quando possível).
-   */
-  const aplicarLayoutAutomatico = React.useCallback(async function aplicarLayoutAutomatico(
-    estado: ProcessWizardState,
-    backendId: string,
-    opcoes: { somenteSeNecessario?: boolean } = {},
-  ): Promise<ProcessWizardState> {
-    if (!estado.bpmnXml) return estado
-    if (!canEditBpmnLayout(estado.status)) return estado
-
-    // Evita reescrever diagramas que já estão corretos (idempotência).
-    if (opcoes.somenteSeNecessario && !diagramaPrecisaLayout(estado.bpmnXml)) return estado
-
-    let organizado: string
-    try {
-      organizado = await gerarLayoutAutomatico(estado.bpmnXml)
-    } catch {
-      return estado
-    }
-    if (!organizado || organizado === estado.bpmnXml) return estado
-
-    try {
-      const atualizado = await saveBpmnLayoutToApi(backendId, organizado)
-      const remapeado = mapApiProcessoToWizardState(atualizado, user.id, defaultSector)
-      return { ...remapeado, bpmnXml: organizado }
-    } catch {
-      // Persistência best-effort: o diagrama organizado segue no rascunho local.
-      return { ...estado, bpmnXml: organizado }
-    }
-  }, [user.id, defaultSector])
-
   React.useEffect(() => {
     if (searchParams.get('novo') !== '1') return
     const next = new URLSearchParams(searchParams)
     next.delete('novo')
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
-
-  React.useEffect(() => {
-    if (processoQueryId || !process.bpmnXml || !canMutate) return
-    if (!diagramaPrecisaLayout(process.bpmnXml)) return
-    let active = true
-    void gerarLayoutAutomatico(process.bpmnXml)
-      .then((organizado) => {
-        if (!active || !organizado || organizado === process.bpmnXml) return
-        setProcess((current) => ({ ...current, bpmnXml: organizado }))
-      })
-      .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [processoQueryId, process.id, process.bpmnXml, canMutate])
 
   React.useEffect(() => {
     if (!processoQueryId || !user.id) return
@@ -157,17 +105,6 @@ export function useProcessWizard(user: Usuario) {
         setLoadResult({ key: loadKey, error: null })
         if (editable) saveProcessDraft(mapped)
         setLastSavedAt(mapped.updatedAt)
-
-        // Reorganiza automaticamente o DI ao abrir em modo best-effort.
-        if (!editable) return
-        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
-          .then((normalizado) => {
-            if (cancellation.signal.aborted || normalizado === mapped) return
-            setProcess(normalizado)
-            saveProcessDraft(normalizado)
-            setLastSavedAt(normalizado.updatedAt)
-          })
-          .catch(() => undefined)
       })
       .catch((error) => {
         if (cancellation.signal.aborted) return
@@ -180,7 +117,7 @@ export function useProcessWizard(user: Usuario) {
     return () => {
       cancellation.abort()
     }
-  }, [processoQueryId, user.id, defaultSector, loadKey, aplicarLayoutAutomatico])
+  }, [processoQueryId, user.id, defaultSector, loadKey])
 
   React.useEffect(() => {
     if (!canMutate) return
@@ -267,12 +204,8 @@ export function useProcessWizard(user: Usuario) {
       const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
       const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
 
-      // Etapa de Auto Layout: reorganiza apenas o DI do diagrama recém-gerado.
-      // Roda em modo best-effort — se falhar, o XML original da IA é mantido.
-      const estadoComLayout = await aplicarLayoutAutomatico(mapped, backendId)
-
       const nextState: ProcessWizardState = {
-        ...estadoComLayout,
+        ...mapped,
         step: 3,
         status: resolveWizardStatus(process.status, 'Em Modelagem BPMN'),
       }

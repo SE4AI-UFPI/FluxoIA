@@ -93,6 +93,9 @@ DIRETRIZES DE MODELAGEM BPMN:
    - NUNCA invente siglas de órgãos ou secretarias (como SDU, SEMF, PREG, etc.) que não existam explicitamente nos dados do processo ou nas respostas.
    - NUNCA invente sistemas (ex: SEI, SIGAA) ou taxas se o entrevistado não os mencionou.
    - NUNCA copie valores literais que aparecem como modelo no exemplo estrutural abaixo. O exemplo serve estritamente para ilustrar a ESTRUTURA de chaves e tipos do JSON.
+7. CLAREZA VISUAL EM GATEWAYS E RÓTULOS DE FLUXO:
+   - O `nome` de cada `exclusiveGateway` DEVE ser apenas uma pergunta curta e direta (máximo 4 a 6 palavras, ex: "Documentação conforme?", "Parecer favorável?", "Deferido?"). NUNCA inclua as opções de resposta ou explicações dos caminhos dentro do nome do losango.
+   - O campo `condicao` nos fluxos de saída de um gateway DEVE ser um rótulo curto e objetivo (1 a 3 palavras, ex: "Sim", "Não", "Com pendência", "Fora do prazo").
 
 FORMATO DE RETORNO OBRIGATÓRIO (JSON PURO):
 {
@@ -357,8 +360,15 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
             f'<bpmn:lane id="{escape(r.id)}" name="{escape(r.nome)}">{refs}</bpmn:lane>'
         )
 
+    def limpar_nome_elemento(elem: BpmnElementoSpec) -> str:
+        nome = (elem.nome or '').strip()
+        if elem.tipo == 'exclusiveGateway' and '?' in nome:
+            # Mantém apenas a pergunta concisa do losango, descartando explicações extras após '?'
+            nome = nome.split('?')[0].strip() + '?'
+        return nome
+
     nodes_xml_parts = [
-        f'<bpmn:{elem.tipo} id="{escape(elem.id)}" name="{escape(elem.nome)}" />'
+        f'<bpmn:{elem.tipo} id="{escape(elem.id)}" name="{escape(limpar_nome_elemento(elem))}" />'
         for elem in estrutura.elementos
     ]
 
@@ -370,6 +380,68 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         flows_xml_parts.append(
             f'<bpmn:sequenceFlow id="{escape(fl.id)}" sourceRef="{escape(fl.origem)}" targetRef="{escape(fl.destino)}"{name_attr} />'
         )
+
+    # Pré-alocação de portas de saída (RIGHT, BOTTOM, TOP) para cada exclusiveGateway,
+    # garantindo que dois fluxos nunca saiam pelo mesmo vértice e que os rótulos não colidam.
+    def has_lane_obstacle(lane_id: str, x1: int, x2: int, exclude: set[str]) -> bool:
+        lo, hi = min(x1, x2), max(x1, x2)
+        for oid in all_nodes:
+            if oid in exclude:
+                continue
+            oelem = elem_map[oid]
+            o_lane = oelem.raia_id if oelem.raia_id in raia_ids else default_raia_id
+            if o_lane == lane_id:
+                ox, _, ow, _ = bounds_map[oid]
+                if not (ox + ow < lo or ox > hi):
+                    return True
+        return False
+
+    flows_by_source: dict[str, list[BpmnFluxoSpec]] = defaultdict(list)
+    for fl in estrutura.fluxos:
+        if fl.origem in bounds_map and fl.destino in bounds_map:
+            flows_by_source[fl.origem].append(fl)
+
+    gw_port_map: dict[str, str] = {}
+    gw_used_ports: dict[str, set[str]] = defaultdict(set)
+    for gw_id, out_flows in flows_by_source.items():
+        if elem_map[gw_id].tipo != 'exclusiveGateway':
+            continue
+        sx, sy, sw, sh = bounds_map[gw_id]
+        u_lane = elem_map[gw_id].raia_id if elem_map[gw_id].raia_id in raia_ids else default_raia_id
+
+        def flow_sort_key(fl: BpmnFluxoSpec) -> tuple[int, int]:
+            tx, ty, _, _ = bounds_map[fl.destino]
+            v_lane = elem_map[fl.destino].raia_id if elem_map[fl.destino].raia_id in raia_ids else default_raia_id
+            is_back = (fl.origem, fl.destino) in back_edges or tx <= sx
+            if not is_back and u_lane == v_lane and not has_lane_obstacle(u_lane, sx + sw, tx, {gw_id, fl.destino}):
+                return (0, tx)
+            if is_back:
+                return (1, tx)
+            return (2, tx)
+
+        sorted_flows = sorted(out_flows, key=flow_sort_key)
+        used: set[str] = set()
+        for fl in sorted_flows:
+            tx, ty, _, _ = bounds_map[fl.destino]
+            v_lane = elem_map[fl.destino].raia_id if elem_map[fl.destino].raia_id in raia_ids else default_raia_id
+            is_back = (fl.origem, fl.destino) in back_edges or tx <= sx
+
+            if is_back:
+                prefs = ['TOP', 'BOTTOM', 'RIGHT'] if ty <= sy else ['BOTTOM', 'TOP', 'RIGHT']
+            elif u_lane == v_lane:
+                if not has_lane_obstacle(u_lane, sx + sw, tx, {gw_id, fl.destino}):
+                    prefs = ['RIGHT', 'BOTTOM', 'TOP']
+                else:
+                    prefs = ['BOTTOM', 'TOP', 'RIGHT']
+            elif ty > sy:
+                prefs = ['BOTTOM', 'RIGHT', 'TOP']
+            else:
+                prefs = ['TOP', 'RIGHT', 'BOTTOM']
+
+            chosen = next((p for p in prefs if p not in used), prefs[0])
+            used.add(chosen)
+            gw_port_map[fl.id] = chosen
+        gw_used_ports[gw_id] = used
 
     shapes_xml_parts = [
         f'<bpmndi:BPMNShape id="{participant_id}_di" bpmnElement="{participant_id}" isHorizontal="true">'
@@ -388,13 +460,46 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
     for elem in estrutura.elementos:
         x, y, w, h = bounds_map[elem.id]
         marker = ' isMarkerVisible="true"' if elem.tipo == 'exclusiveGateway' else ''
+        shape_label_xml = ''
+        if elem.tipo == 'exclusiveGateway':
+            used_ports = gw_used_ports.get(elem.id, set())
+            gw_lw, gw_lh = 136, 36
+            if 'TOP' not in used_ports:
+                gw_lx = x + (w // 2) - (gw_lw // 2) - 8
+                gw_ly = y - gw_lh - 8
+            elif 'BOTTOM' not in used_ports:
+                gw_lx = x + (w // 2) - (gw_lw // 2) - 8
+                gw_ly = y + h + 10
+            elif 'RIGHT' not in used_ports:
+                gw_lx = x + w + 12
+                gw_ly = y + (h // 2) - (gw_lh // 2)
+            else:
+                gw_lw = 124
+                gw_lx = x - gw_lw + 6
+                gw_ly = y - gw_lh - 6
+            shape_label_xml = (
+                f'<bpmndi:BPMNLabel>'
+                f'<dc:Bounds x="{gw_lx}" y="{gw_ly}" width="{gw_lw}" height="{gw_lh}" />'
+                f'</bpmndi:BPMNLabel>'
+            )
+        elif elem.tipo in ('startEvent', 'endEvent'):
+            ev_lw, ev_lh = 120, 36
+            ev_lx = x + (w // 2) - (ev_lw // 2)
+            ev_ly = y + h + 6
+            shape_label_xml = (
+                f'<bpmndi:BPMNLabel>'
+                f'<dc:Bounds x="{ev_lx}" y="{ev_ly}" width="{ev_lw}" height="{ev_lh}" />'
+                f'</bpmndi:BPMNLabel>'
+            )
+
         shapes_xml_parts.append(
             f'<bpmndi:BPMNShape id="{escape(elem.id)}_di" bpmnElement="{escape(elem.id)}"{marker}>'
             f'<dc:Bounds x="{x}" y="{y}" width="{w}" height="{h}" />'
+            f'{shape_label_xml}'
             f'</bpmndi:BPMNShape>'
         )
 
-    # 6. Roteamento inteligente de Edges (sem atravessar caixas e sem sobrepor divisórias de raias)
+    # 6. Roteamento inteligente de Edges (sem atravessar caixas e sem sobrepor rótulos)
     edges_xml_parts: list[str] = []
     for edge_idx, fl in enumerate(estrutura.fluxos):
         if fl.origem not in bounds_map or fl.destino not in bounds_map:
@@ -410,51 +515,94 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         offset_canal = ((edge_idx % 3) - 1) * 12
 
         is_back = (fl.origem, fl.destino) in back_edges or tx <= sx
+        gw_port = gw_port_map.get(fl.id) if u_elem.tipo == 'exclusiveGateway' else None
 
         if is_back:
             # Retorno de ciclo (saneamento / diligência) pelo corredor interno da raia do destino
             end_x = tx + (tw // 2)
-            if ty >= sy:
+            if gw_port == 'TOP' or (gw_port is None and ty < sy):
+                start_x = sx + (sw // 2)
+                start_y = sy
+                corridor_y = (
+                    v_lane_y + INTERNAL_CORRIDOR + (edge_idx % 2) * 8
+                    if ty >= sy
+                    else v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR - (edge_idx % 2) * 8
+                )
+                end_y = ty if ty >= sy else ty + th
+                pts = [(start_x, start_y), (start_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
+            elif gw_port == 'BOTTOM':
+                start_x = sx + (sw // 2)
+                start_y = sy + sh
+                corridor_y = (
+                    v_lane_y + INTERNAL_CORRIDOR + (edge_idx % 2) * 8
+                    if ty > sy
+                    else v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR - (edge_idx % 2) * 8
+                )
+                end_y = ty if ty > sy else ty + th
+                pts = [(start_x, start_y), (start_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
+            else:
                 start_x = sx + sw
                 start_y = sy + (sh // 2)
                 turn_x = sx + sw + 24 + offset_canal
                 corridor_y = v_lane_y + INTERNAL_CORRIDOR + (edge_idx % 2) * 8
                 end_y = ty
                 pts = [(start_x, start_y), (turn_x, start_y), (turn_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
-            else:
-                start_x = sx + (sw // 2)
-                start_y = sy
-                corridor_y = v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR - (edge_idx % 2) * 8
-                end_y = ty + th
-                pts = [(start_x, start_y), (start_x, corridor_y), (end_x, corridor_y), (end_x, end_y)]
-        elif u_elem.tipo == 'exclusiveGateway' and u_lane != v_lane:
-            # Saída de Gateway para outra raia: usa vértice superior ou inferior do losango
-            start_x = sx + (sw // 2)
-            start_y = sy if ty < sy else sy + sh
+        elif u_elem.tipo == 'exclusiveGateway':
             end_x = tx
             end_y = ty + (th // 2)
-            pts = [(start_x, start_y), (start_x, end_y), (end_x, end_y)]
+            if gw_port == 'BOTTOM':
+                start_x = sx + (sw // 2)
+                start_y = sy + sh
+                if u_lane == v_lane:
+                    bypass_y = u_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
+                    turn2_x = end_x - 20
+                    pts = [(start_x, start_y), (start_x, bypass_y), (turn2_x, bypass_y), (turn2_x, end_y), (end_x, end_y)]
+                elif has_lane_obstacle(v_lane, start_x, end_x, {fl.origem, fl.destino}):
+                    corridor_y = v_lane_y + INTERNAL_CORRIDOR if v_lane_y > u_lane_y else v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
+                    turn2_x = end_x - 24
+                    pts = [(start_x, start_y), (start_x, corridor_y), (turn2_x, corridor_y), (turn2_x, end_y), (end_x, end_y)]
+                else:
+                    pts = [(start_x, start_y), (start_x, end_y), (end_x, end_y)]
+            elif gw_port == 'TOP':
+                start_x = sx + (sw // 2)
+                start_y = sy
+                if u_lane == v_lane:
+                    bypass_y = u_lane_y + INTERNAL_CORRIDOR
+                    turn2_x = end_x - 20
+                    pts = [(start_x, start_y), (start_x, bypass_y), (turn2_x, bypass_y), (turn2_x, end_y), (end_x, end_y)]
+                elif has_lane_obstacle(v_lane, start_x, end_x, {fl.origem, fl.destino}):
+                    corridor_y = v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR if v_lane_y < u_lane_y else v_lane_y + INTERNAL_CORRIDOR
+                    turn2_x = end_x - 24
+                    pts = [(start_x, start_y), (start_x, corridor_y), (turn2_x, corridor_y), (turn2_x, end_y), (end_x, end_y)]
+                else:
+                    pts = [(start_x, start_y), (start_x, end_y), (end_x, end_y)]
+            else:
+                # gw_port == 'RIGHT'
+                start_x = sx + sw
+                start_y = sy + (sh // 2)
+                if u_lane == v_lane:
+                    if has_lane_obstacle(u_lane, start_x, end_x, {fl.origem, fl.destino}):
+                        bypass_y = u_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
+                        turn1_x = start_x + 24
+                        turn2_x = end_x - 18
+                        pts = [(start_x, start_y), (turn1_x, start_y), (turn1_x, bypass_y), (turn2_x, bypass_y), (turn2_x, end_y), (end_x, end_y)]
+                    else:
+                        pts = [(start_x, start_y), (end_x, end_y)]
+                else:
+                    turn1_x = min(start_x + 56, max(start_x + 24, end_x - 24))
+                    if has_lane_obstacle(v_lane, turn1_x, end_x, {fl.origem, fl.destino}):
+                        corridor_y = v_lane_y + INTERNAL_CORRIDOR if v_lane_y > u_lane_y else v_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
+                        turn2_x = end_x - 24
+                        pts = [(start_x, start_y), (turn1_x, start_y), (turn1_x, corridor_y), (turn2_x, corridor_y), (turn2_x, end_y), (end_x, end_y)]
+                    else:
+                        pts = [(start_x, start_y), (turn1_x, start_y), (turn1_x, end_y), (end_x, end_y)]
         elif u_lane == v_lane:
             start_x = sx + sw
             start_y = sy + (sh // 2)
             end_x = tx
             end_y = ty + (th // 2)
 
-            x_min = sx + sw
-            x_max = tx
-            has_obstacle = False
-            for oid in all_nodes:
-                if oid == fl.origem or oid == fl.destino:
-                    continue
-                oelem = elem_map[oid]
-                o_lane = oelem.raia_id if oelem.raia_id in raia_ids else default_raia_id
-                if o_lane == u_lane:
-                    ox, oy, ow, oh = bounds_map[oid]
-                    if x_min <= ox <= x_max:
-                        has_obstacle = True
-                        break
-
-            if has_obstacle:
+            if has_lane_obstacle(u_lane, start_x, end_x, {fl.origem, fl.destino}):
                 bypass_y = u_lane_y + LANE_HEIGHT - INTERNAL_CORRIDOR
                 turn1_x = start_x + 18
                 turn2_x = end_x - 18
@@ -474,11 +622,21 @@ def compilar_bpmn_xml(processo: Processo, estrutura: BpmnEstruturaGerada) -> str
         if fl.condicao.strip():
             p0_x, p0_y = pts[0]
             p1_x, p1_y = pts[1] if len(pts) > 1 else pts[0]
-            is_vert = abs(p1_y - p0_y) > abs(p1_x - p0_x)
             lw = min(130, max(44, int(len(fl.condicao.strip()) * 6.5)))
-            lh = 24
-            lx = p0_x + 8 if is_vert else p0_x + 12
-            ly = (p0_y - 30 if p1_y < p0_y else p0_y + 8) if is_vert else p0_y - lh - 4
+            lh = 22
+            if gw_port == 'BOTTOM':
+                lx = p0_x + 8
+                ly = p0_y + 8
+            elif gw_port == 'TOP':
+                lx = p0_x + 8
+                ly = p0_y - lh - 6
+            elif gw_port == 'RIGHT':
+                lx = p0_x + 14
+                ly = p0_y - lh - 2
+            else:
+                is_vert = abs(p1_y - p0_y) > abs(p1_x - p0_x)
+                lx = p0_x + 8 if is_vert else p0_x + 12
+                ly = (p0_y - lh - 6 if p1_y < p0_y else p0_y + 8) if is_vert else p0_y - lh - 4
             label_xml = f'<bpmndi:BPMNLabel><dc:Bounds x="{lx}" y="{ly}" width="{lw}" height="{lh}" /></bpmndi:BPMNLabel>'
 
         edges_xml_parts.append(

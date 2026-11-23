@@ -290,4 +290,100 @@ def test_validacao_resposta_entrevista_heuristica_e_ia(operador_user):
     assert logs[2].processo_nome == "Licença de Demolição"
 
 
+def test_compilar_bpmn_xml_gateways_sem_sobreposicao_de_rotulos():
+    import uuid
+    import xml.etree.ElementTree as ET
+    from types import SimpleNamespace
+    from core.services.bpmn_ai_service import BpmnEstruturaGerada, compilar_bpmn_xml
+
+    est = BpmnEstruturaGerada.model_validate(
+        {
+            "resumo_modelo": "Fluxo com múltiplos gateways e desvios",
+            "raias": [
+                {"id": "Lane_1", "nome": "Requerente"},
+                {"id": "Lane_2", "nome": "DPM/DAA"},
+                {"id": "Lane_3", "nome": "Colegiado"},
+                {"id": "Lane_4", "nome": "DAA/PREG"},
+            ],
+            "elementos": [
+                {"id": "Start_1", "tipo": "startEvent", "nome": "Início", "raia_id": "Lane_1"},
+                {"id": "Task_1", "tipo": "task", "nome": "1. Enviar pedido", "raia_id": "Lane_1"},
+                {"id": "Task_2", "tipo": "task", "nome": "2. Conferir documentos", "raia_id": "Lane_2"},
+                {
+                    "id": "Gateway_1",
+                    "tipo": "exclusiveGateway",
+                    "nome": "Documentação conforme? (Sim: segue / Não: notifica)",
+                    "raia_id": "Lane_2",
+                },
+                {"id": "Task_2_1", "tipo": "task", "nome": "2.1 Notificar pendência", "raia_id": "Lane_2"},
+                {"id": "Task_2_2", "tipo": "task", "nome": "2.2 Sanear pendência", "raia_id": "Lane_1"},
+                {"id": "Gateway_2", "tipo": "exclusiveGateway", "nome": "Pendência saneada?", "raia_id": "Lane_2"},
+                {"id": "Task_3", "tipo": "task", "nome": "3. Analisar mérito", "raia_id": "Lane_3"},
+                {"id": "Gateway_3", "tipo": "exclusiveGateway", "nome": "Parecer favorável?", "raia_id": "Lane_3"},
+                {"id": "Task_4", "tipo": "task", "nome": "4. Verificar vagas", "raia_id": "Lane_4"},
+                {"id": "Gateway_4", "tipo": "exclusiveGateway", "nome": "Deferido?", "raia_id": "Lane_4"},
+                {"id": "Task_5", "tipo": "task", "nome": "5. Efetivar cadastro", "raia_id": "Lane_4"},
+                {"id": "Task_6", "tipo": "task", "nome": "6. Indeferir e arquivar", "raia_id": "Lane_4"},
+                {"id": "End_1", "tipo": "endEvent", "nome": "Concluído", "raia_id": "Lane_4"},
+                {"id": "End_2", "tipo": "endEvent", "nome": "Arquivado", "raia_id": "Lane_4"},
+            ],
+            "fluxos": [
+                {"id": "Flow_1", "origem": "Start_1", "destino": "Task_1", "condicao": ""},
+                {"id": "Flow_2", "origem": "Task_1", "destino": "Task_2", "condicao": ""},
+                {"id": "Flow_3", "origem": "Task_2", "destino": "Gateway_1", "condicao": ""},
+                {"id": "Flow_4", "origem": "Gateway_1", "destino": "Task_3", "condicao": "Sim"},
+                {"id": "Flow_5", "origem": "Gateway_1", "destino": "Task_2_1", "condicao": "Com pendência"},
+                {"id": "Flow_6", "origem": "Task_2_1", "destino": "Task_2_2", "condicao": ""},
+                {"id": "Flow_7", "origem": "Task_2_2", "destino": "Gateway_2", "condicao": ""},
+                {"id": "Flow_8", "origem": "Gateway_2", "destino": "Task_2", "condicao": "Sim"},
+                {"id": "Flow_9", "origem": "Gateway_2", "destino": "Task_6", "condicao": "Não"},
+                {"id": "Flow_10", "origem": "Task_3", "destino": "Gateway_3", "condicao": ""},
+                {"id": "Flow_11", "origem": "Gateway_3", "destino": "Task_4", "condicao": "Sim"},
+                {"id": "Flow_12", "origem": "Gateway_3", "destino": "Task_6", "condicao": "Não"},
+                {"id": "Flow_13", "origem": "Task_4", "destino": "Gateway_4", "condicao": ""},
+                {"id": "Flow_14", "origem": "Gateway_4", "destino": "Task_5", "condicao": "Sim"},
+                {"id": "Flow_15", "origem": "Gateway_4", "destino": "Task_6", "condicao": "Não"},
+                {"id": "Flow_16", "origem": "Task_5", "destino": "End_1", "condicao": ""},
+                {"id": "Flow_17", "origem": "Task_6", "destino": "End_2", "condicao": ""},
+            ],
+        }
+    )
+
+    proc = SimpleNamespace(id=uuid.uuid4(), nome="Processo Teste Gateways")
+    xml_str = compilar_bpmn_xml(proc, est)
+    ns = {
+        "bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+        "bpmndi": "http://www.omg.org/spec/BPMN/20100524/DI",
+        "dc": "http://www.omg.org/spec/DD/20100524/DC",
+    }
+    root = ET.fromstring(xml_str)
+
+    # 1. Garante higienização de texto extra após '?' no nome do losango
+    gws = {el.attrib["id"]: el.attrib["name"] for el in root.findall(".//bpmn:exclusiveGateway", ns)}
+    assert gws["Gateway_1"] == "Documentação conforme?"
+
+    # 2. Garante que todas as caixas de texto (BPMNLabel) de shapes e edges estão disjuntas (0 sobreposições)
+    labels = []
+    for shape in root.findall(".//bpmndi:BPMNShape", ns):
+        el_id = shape.attrib.get("bpmnElement")
+        lbl = shape.find("bpmndi:BPMNLabel/dc:Bounds", ns)
+        if lbl is not None:
+            b = tuple(int(float(lbl.attrib[k])) for k in ("x", "y", "width", "height"))
+            labels.append((f"Shape:{el_id}", b))
+    for edge in root.findall(".//bpmndi:BPMNEdge", ns):
+        el_id = edge.attrib.get("bpmnElement")
+        lbl = edge.find("bpmndi:BPMNLabel/dc:Bounds", ns)
+        if lbl is not None:
+            b = tuple(int(float(lbl.attrib[k])) for k in ("x", "y", "width", "height"))
+            labels.append((f"Edge:{el_id}", b))
+
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            n1, (x1, y1, w1, h1) = labels[i]
+            n2, (x2, y2, w2, h2) = labels[j]
+            intersects = not (x1 + w1 <= x2 or x2 + w2 <= x1 or y1 + h1 <= y2 or y2 + h2 <= y1)
+            assert not intersects, f"Sobreposição detectada entre {n1} e {n2}"
+
+
+
 
