@@ -115,7 +115,6 @@ export function BPMNGenerationStep({
   const activeStageIndex = isCompleting
     ? ETAPAS_GERACAO_IA.length
     : Math.min(ETAPAS_GERACAO_IA.length - 1, Math.max(0, generationProgress?.etapaIndice ?? 0))
-  const mediaHistorica = generationProgress?.mediaHistoricaSegundos
 
   const progressOverlayNode = showProgressOverlay ? (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/65 backdrop-blur-[2px] p-4">
@@ -143,7 +142,7 @@ export function BPMNGenerationStep({
               </h3>
               <Badge variant="secondary" className="flex items-center gap-1 text-xs font-medium">
                 <Clock className="h-3.5 w-3.5 text-fx-azul" />
-                {elapsedSeconds}s{mediaHistorica ? ` · Média real: ~${mediaHistorica}s` : ''}
+                {elapsedSeconds}s
               </Badge>
             </div>
             <p className="text-xs text-fx-cinza mt-0.5">

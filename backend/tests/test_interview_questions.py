@@ -414,6 +414,134 @@ def test_analisar_progresso_parcial_json_stream():
     assert "2 conexão(ões) de fluxo" in s2_flow["detalhe"]
 
 
+def test_compilar_bpmn_xml_sem_linhas_sobrepostas_nem_atravessando_losango():
+    import uuid
+    import xml.etree.ElementTree as ET
+    from types import SimpleNamespace
+    from core.services.bpmn_ai_service import BpmnEstruturaGerada, compilar_bpmn_xml
+
+    # Topologia idêntica ao caso de Trancamento de Disciplina com 2 gateways seguidos na mesma raia,
+    # loop de saneamento (back-edge na mesma raia) e desvios para tarefa de indeferimento.
+    est = BpmnEstruturaGerada.model_validate(
+        {
+            "resumo_modelo": "Trancamento de Disciplina",
+            "raias": [
+                {"id": "Lane_1", "nome": "Discente"},
+                {"id": "Lane_2", "nome": "Coordenação do Curso"},
+                {"id": "Lane_3", "nome": "DAA/PREG"},
+            ],
+            "elementos": [
+                {"id": "Start_1", "tipo": "startEvent", "nome": "Início", "raia_id": "Lane_1"},
+                {"id": "Task_1", "tipo": "task", "nome": "1. Submeter pedido", "raia_id": "Lane_1"},
+                {"id": "Task_2", "tipo": "task", "nome": "2. Analisar pedido", "raia_id": "Lane_2"},
+                {"id": "Gateway_1", "tipo": "exclusiveGateway", "nome": "Pedido deferido?", "raia_id": "Lane_2"},
+                {"id": "Task_2_2", "tipo": "task", "nome": "2.2 Sanear pendência", "raia_id": "Lane_1"},
+                {
+                    "id": "Gateway_2",
+                    "tipo": "exclusiveGateway",
+                    "nome": "Pendência saneada no prazo?",
+                    "raia_id": "Lane_2",
+                },
+                {"id": "Task_3_1", "tipo": "task", "nome": "3.1 Homologar registro", "raia_id": "Lane_3"},
+                {"id": "Task_4", "tipo": "task", "nome": "4. Consolidar status", "raia_id": "Lane_2"},
+                {"id": "Task_5", "tipo": "task", "nome": "5. Indeferir pedido", "raia_id": "Lane_2"},
+                {"id": "End_1", "tipo": "endEvent", "nome": "Concluído", "raia_id": "Lane_2"},
+                {"id": "End_2", "tipo": "endEvent", "nome": "Indeferido", "raia_id": "Lane_2"},
+            ],
+            "fluxos": [
+                {"id": "F1", "origem": "Start_1", "destino": "Task_1", "condicao": ""},
+                {"id": "F2", "origem": "Task_1", "destino": "Task_2", "condicao": ""},
+                {"id": "F3", "origem": "Task_2", "destino": "Gateway_1", "condicao": ""},
+                {"id": "F4", "origem": "Gateway_1", "destino": "Task_3_1", "condicao": "Sim"},
+                {"id": "F5", "origem": "Gateway_1", "destino": "Task_5", "condicao": "Não"},
+                {"id": "F6", "origem": "Task_2_2", "destino": "Gateway_2", "condicao": ""},
+                {"id": "F7", "origem": "Gateway_2", "destino": "Task_2", "condicao": "Sim"},
+                {"id": "F8", "origem": "Gateway_2", "destino": "Task_5", "condicao": "Não"},
+                {"id": "F9", "origem": "Task_3_1", "destino": "Task_4", "condicao": ""},
+                {"id": "F10", "origem": "Task_4", "destino": "End_1", "condicao": ""},
+                {"id": "F11", "origem": "Task_5", "destino": "End_2", "condicao": ""},
+            ],
+        }
+    )
+
+    proc = SimpleNamespace(id=uuid.uuid4(), nome="Solicitação de Trancamento")
+    xml_str = compilar_bpmn_xml(proc, est)
+    ns = {
+        "bpmn": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+        "bpmndi": "http://www.omg.org/spec/BPMN/20100524/DI",
+        "dc": "http://www.omg.org/spec/DD/20100524/DC",
+        "di": "http://www.omg.org/spec/DD/20100524/DI",
+    }
+    root = ET.fromstring(xml_str)
+
+    # Coleta bounds das formas (exceto Pool e Lanes)
+    containers = {"Lane_1", "Lane_2", "Lane_3"}
+    node_bounds = {}
+    lane_borders_y = set()
+    for shape in root.findall(".//bpmndi:BPMNShape", ns):
+        el_id = shape.attrib.get("bpmnElement", "")
+        b_el = shape.find("dc:Bounds", ns)
+        if b_el is None:
+            continue
+        x, y, w, h = (int(float(b_el.attrib[k])) for k in ("x", "y", "width", "height"))
+        if el_id in containers:
+            lane_borders_y.add(y)
+            lane_borders_y.add(y + h)
+        elif not el_id.startswith("Participant_"):
+            node_bounds[el_id] = (x, y, w, h)
+
+    h_segs = []
+    v_segs = []
+    for edge in root.findall(".//bpmndi:BPMNEdge", ns):
+        fl_id = edge.attrib.get("bpmnElement", "")
+        pts = [
+            (int(float(wp.attrib["x"])), int(float(wp.attrib["y"])))
+            for wp in edge.findall("di:waypoint", ns)
+        ]
+        for i in range(len(pts) - 1):
+            (x1, y1), (x2, y2) = pts[i], pts[i + 1]
+            # 1. Verifica que nenhum segmento atravessa o interior estrito de NENHUM nó (nem do próprio losango!)
+            for nid, (nx, ny, nw, nh) in node_bounds.items():
+                if y1 == y2:
+                    lo, hi = min(x1, x2), max(x1, x2)
+                    inside_y = (ny + 2) < y1 < (ny + nh - 2)
+                    crosses_x = lo < (nx + nw - 2) and hi > (nx + 2)
+                    assert not (inside_y and crosses_x), f"Fluxo {fl_id} atravessou horizontalmente o nó {nid}"
+                elif x1 == x2:
+                    lo, hi = min(y1, y2), max(y1, y2)
+                    inside_x = (nx + 2) < x1 < (nx + nw - 2)
+                    crosses_y = lo < (ny + nh - 2) and hi > (ny + 2)
+                    assert not (inside_x and crosses_y), f"Fluxo {fl_id} atravessou verticalmente o nó {nid}"
+
+            if y1 == y2 and abs(x2 - x1) >= 6:
+                # 2. Não pode ficar em cima da linha divisória da raia
+                for by in lane_borders_y:
+                    assert abs(y1 - by) >= 10, f"Fluxo {fl_id} sobreposto à borda da raia em y={y1}"
+                h_segs.append((fl_id, y1, min(x1, x2), max(x1, x2)))
+            elif x1 == x2 and abs(y2 - y1) >= 6:
+                v_segs.append((fl_id, x1, min(y1, y2), max(y1, y2)))
+
+    # 3. Verifica que dois segmentos horizontais de fluxos diferentes não ficam sobrepostos na mesma trilha Y
+    for i in range(len(h_segs)):
+        for j in range(i + 1, len(h_segs)):
+            f1, y1, lo1, hi1 = h_segs[i]
+            f2, y2, lo2, hi2 = h_segs[j]
+            if f1 != f2 and abs(y1 - y2) < 8:
+                overlap_x = min(hi1, hi2) - max(lo1, lo2)
+                assert overlap_x <= 6, f"Segmentos horizontais sobrepostos entre {f1} (y={y1}) e {f2} (y={y2})"
+
+    # 4. Verifica que dois segmentos verticais de fluxos diferentes não ficam sobrepostos no mesmo canal X
+    for i in range(len(v_segs)):
+        for j in range(i + 1, len(v_segs)):
+            f1, x1, lo1, hi1 = v_segs[i]
+            f2, x2, lo2, hi2 = v_segs[j]
+            if f1 != f2 and abs(x1 - x2) < 8:
+                overlap_y = min(hi1, hi2) - max(lo1, lo2)
+                assert overlap_y <= 6, f"Segmentos verticais sobrepostos entre {f1} (x={x1}) e {f2} (x={x2})"
+
+
+
+
 
 
 

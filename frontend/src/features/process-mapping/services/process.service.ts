@@ -511,7 +511,6 @@ export interface BpmnStreamProgress {
   etapaIndice: number
   progresso: number
   detalhe: string
-  mediaHistoricaSegundos?: number
 }
 
 export async function generateBpmnWithAiFromApi(
@@ -573,7 +572,6 @@ export async function generateBpmnWithAiFromApi(
       etapa_indice?: number
       progresso?: number
       detalhe?: string
-      media_historica_segundos?: number
       processo?: ApiProcesso
       detail?: string
     }
@@ -587,14 +585,12 @@ export async function generateBpmnWithAiFromApi(
         etapaIndice: evento.etapa_indice ?? 0,
         progresso: evento.progresso ?? 10,
         detalhe: evento.detalhe ?? '',
-        mediaHistoricaSegundos: evento.media_historica_segundos,
       })
     } else if (evento.type === 'complete' && evento.processo) {
       onProgress?.({
         etapaIndice: 3,
         progresso: 100,
         detalhe: 'Diagrama BPMN 2.0 compilado e salvo com sucesso!',
-        mediaHistoricaSegundos: evento.media_historica_segundos,
       })
       finalProcesso = evento.processo
     }
