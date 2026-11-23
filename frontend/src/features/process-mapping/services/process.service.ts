@@ -1,4 +1,5 @@
 import { apiClient } from '@/services/apiClient'
+import { refreshAccessToken, tokenStorage } from '@/services/authService'
 import { generateUUID } from '@/lib/utils'
 import type {
   ApiProcesso,
@@ -506,13 +507,119 @@ export async function saveBpmnLayoutToApi(
   })
 }
 
+export interface BpmnStreamProgress {
+  etapaIndice: number
+  progresso: number
+  detalhe: string
+  mediaHistoricaSegundos?: number
+}
+
 export async function generateBpmnWithAiFromApi(
   backendId: string,
   respostas: Record<string, string>,
+  onProgress?: (progress: BpmnStreamProgress) => void,
 ): Promise<ApiProcesso> {
-  return apiClient.post<ApiProcesso>(`/api/processos/${backendId}/gerar-bpmn-ia/`, {
-    respostas,
+  const path = `/api/processos/${backendId}/gerar-bpmn-ia/?stream=1`
+  const access = tokenStorage.getAccess()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (access) {
+    headers.Authorization = `Bearer ${access}`
+  }
+
+  let response = await fetch(path, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ respostas, stream: true }),
   })
+
+  if (response.status === 401) {
+    const newAccess = await refreshAccessToken()
+    if (newAccess) {
+      headers.Authorization = `Bearer ${newAccess}`
+      response = await fetch(path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ respostas, stream: true }),
+      })
+    }
+  }
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => null)
+    const detail =
+      errData && typeof errData === 'object' && 'detail' in errData && typeof errData.detail === 'string'
+        ? errData.detail
+        : `Erro HTTP ${response.status}`
+    throw new Error(detail)
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (!response.body || !contentType.includes('application/x-ndjson')) {
+    return (await response.json()) as ApiProcesso
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalProcesso: ApiProcesso | null = null
+
+  const processarLinha = (linha: string) => {
+    const limpa = linha.trim()
+    if (!limpa) return
+    const evento = JSON.parse(limpa) as {
+      type?: string
+      etapa_indice?: number
+      progresso?: number
+      detalhe?: string
+      media_historica_segundos?: number
+      processo?: ApiProcesso
+      detail?: string
+    }
+
+    if (evento.type === 'error') {
+      throw new Error(evento.detail || 'Falha ao gerar o diagrama BPMN com a IA.')
+    }
+
+    if (evento.type === 'progress') {
+      onProgress?.({
+        etapaIndice: evento.etapa_indice ?? 0,
+        progresso: evento.progresso ?? 10,
+        detalhe: evento.detalhe ?? '',
+        mediaHistoricaSegundos: evento.media_historica_segundos,
+      })
+    } else if (evento.type === 'complete' && evento.processo) {
+      onProgress?.({
+        etapaIndice: 3,
+        progresso: 100,
+        detalhe: 'Diagrama BPMN 2.0 compilado e salvo com sucesso!',
+        mediaHistoricaSegundos: evento.media_historica_segundos,
+      })
+      finalProcesso = evento.processo
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const linhas = buffer.split('\n')
+    buffer = linhas.pop() ?? ''
+    for (const linha of linhas) {
+      processarLinha(linha)
+    }
+  }
+
+  if (buffer.trim()) {
+    processarLinha(buffer)
+  }
+
+  if (!finalProcesso) {
+    throw new Error('A conexão com o motor de IA foi encerrada antes de concluir o diagrama.')
+  }
+
+  return finalProcesso
 }
 
 export async function submitProcessToApi(

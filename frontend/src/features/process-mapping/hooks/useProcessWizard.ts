@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import type { Usuario } from '@/types/auth'
 import {
+  type BpmnStreamProgress,
   createInitialProcess,
   fetchProcessoByIdFromApi,
   generateBpmnWithAiFromApi,
@@ -67,6 +68,7 @@ export function useProcessWizard(user: Usuario) {
     !startFresh && isProcessStarted(process) ? process.updatedAt : null,
   )
   const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
+  const [aiGenerationProgress, setAiGenerationProgress] = React.useState<BpmnStreamProgress | null>(null)
   const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = React.useState(false)
   const [layoutError, setLayoutError] = React.useState<string | null>(null)
@@ -193,6 +195,11 @@ export function useProcessWizard(user: Usuario) {
   async function generateBpmn() {
     if (!canMutate) return
     setIsGeneratingBpmn(true)
+    setAiGenerationProgress({
+      etapaIndice: 0,
+      progresso: 5,
+      detalhe: 'Sincronizando respostas da entrevista com o servidor...',
+    })
     setAiGenerationError(null)
 
     try {
@@ -201,7 +208,11 @@ export function useProcessWizard(user: Usuario) {
         throw new Error('Não foi possível sincronizar o processo com o servidor para iniciar a geração por IA.')
       }
 
-      const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
+      const apiProcesso = await generateBpmnWithAiFromApi(
+        backendId,
+        process.answers,
+        (progressoReal) => setAiGenerationProgress(progressoReal),
+      )
       const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
 
       const nextState: ProcessWizardState = {
@@ -371,6 +382,7 @@ export function useProcessWizard(user: Usuario) {
     allowedSectors,
     lastSavedAt,
     isGeneratingBpmn,
+    aiGenerationProgress,
     aiGenerationError,
     isSavingLayout,
     layoutError,

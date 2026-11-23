@@ -385,5 +385,35 @@ def test_compilar_bpmn_xml_gateways_sem_sobreposicao_de_rotulos():
             assert not intersects, f"Sobreposição detectada entre {n1} e {n2}"
 
 
+def test_analisar_progresso_parcial_json_stream():
+    from core.services.bpmn_ai_service import analisar_progresso_parcial_json
+
+    s0 = analisar_progresso_parcial_json('{"resumo_modelo": "Fluxo UFPI"')
+    assert s0["etapa_indice"] == 0
+    assert 12 <= s0["progresso"] <= 24
+
+    s1 = analisar_progresso_parcial_json(
+        '{"resumo_modelo": "Fluxo", "ficha_tecnica": {"legenda": [], "sistemas": ["SIPAC"], "documentacao": ["RG"]'
+    )
+    assert s1["etapa_indice"] == 1
+    assert 26 <= s1["progresso"] <= 44
+    assert "3/6 quadros" in s1["detalhe"]
+
+    s2_elem = analisar_progresso_parcial_json(
+        '{"ficha_tecnica": {}, "raias": [{"id": "L1"}, {"id": "L2"}], "elementos": [{"id": "T1", "raia_id": "L1"}, {"id": "T2", "raia_id": "L2"}'
+    )
+    assert s2_elem["etapa_indice"] == 2
+    assert s2_elem["progresso"] >= 55
+    assert "2 raia(s) e 2 elemento(s)" in s2_elem["detalhe"]
+
+    s2_flow = analisar_progresso_parcial_json(
+        '{"ficha_tecnica": {}, "raias": [{"id": "L1"}, {"id": "L2"}], "elementos": [{"raia_id": "L1"}], "fluxos": [{"origem": "S", "destino": "T1"}, {"origem": "T1", "destino": "E"}'
+    )
+    assert s2_flow["etapa_indice"] == 2
+    assert s2_flow["progresso"] >= 80
+    assert "2 conexão(ões) de fluxo" in s2_flow["detalhe"]
+
+
+
 
 

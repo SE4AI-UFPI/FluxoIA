@@ -454,6 +454,7 @@ export function ProcessMappingPage() {
             process={process}
             lastSavedAt={wizard.lastSavedAt}
             isGenerating={wizard.isGeneratingBpmn}
+            generationProgress={wizard.aiGenerationProgress}
             generationError={wizard.aiGenerationError}
             isSavingLayout={wizard.isSavingLayout}
             layoutError={wizard.layoutError}

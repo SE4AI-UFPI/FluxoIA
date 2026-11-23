@@ -671,16 +671,99 @@ def proximo_numero_versao(versao_atual: str) -> str:
     return f'{partes[0]}.{partes[1]}.{partes[2] + 1}'
 
 
-def gerar_fluxo_bpmn_com_ia(
-    *,
-    processo: Processo,
-    usuario: User,
-    llm_client: LLMClient | None = None,
-) -> VersaoFluxoBPMN:
+def obter_latencia_media_historica() -> int:
     """
-    Orquestra a geração do diagrama BPMN 2.0 via IA a partir da entrevista guiada do processo,
-    valida a estrutura com Pydantic, compila o XML BPMN 2.0 com raias e persiste a nova VersaoFluxoBPMN.
+    Calcula a latência média real (em segundos) das últimas gerações BPMN salvas no banco
+    a partir de `estrutura_json['meta_ia']['latencia_segundos']`.
     """
+    try:
+        ultimas = list(
+            VersaoFluxoBPMN.objects.exclude(estrutura_json={})
+            .order_by('-criado_em')
+            .values_list('estrutura_json', flat=True)[:15]
+        )
+        latencias = [
+            float(est['meta_ia']['latencia_segundos'])
+            for est in ultimas
+            if isinstance(est, dict)
+            and isinstance(est.get('meta_ia'), dict)
+            and isinstance(est['meta_ia'].get('latencia_segundos'), (int, float))
+            and 1.0 <= float(est['meta_ia']['latencia_segundos']) <= 180.0
+        ]
+        if latencias:
+            return max(5, round(sum(latencias) / len(latencias)))
+    except Exception:
+        pass
+    return 20
+
+
+def analisar_progresso_parcial_json(acumulado: str) -> dict[str, Any]:
+    """
+    Inspeciona o JSON parcial recebido via streaming da LLM em tempo real para determinar
+    a etapa exata do pipeline, a porcentagem real concluída e contadores vivos de elementos.
+    """
+    import re
+
+    tem_ficha = '"ficha_tecnica"' in acumulado
+    tem_raias = '"raias"' in acumulado
+    tem_elementos = '"elementos"' in acumulado
+    tem_fluxos = '"fluxos"' in acumulado
+
+    if not tem_ficha and not tem_raias and not tem_elementos:
+        progresso = min(24, 12 + len(acumulado) // 25)
+        return {
+            'etapa_indice': 0,
+            'progresso': progresso,
+            'detalhe': 'Modelo conectado! Sintetizando resumo estrutural a partir da entrevista...',
+        }
+
+    if tem_ficha and not tem_raias and not tem_elementos:
+        sub_chaves = sum(
+            1
+            for k in ('"legenda"', '"observacoes_prazo"', '"informacoes_gerais"', '"sistemas"', '"documentacao"', '"taxas"')
+            if k in acumulado
+        )
+        progresso = min(44, 26 + sub_chaves * 3)
+        return {
+            'etapa_indice': 1,
+            'progresso': progresso,
+            'detalhe': f'Consolidando Ficha Técnica ({sub_chaves}/6 quadros institucionais extraídos)...',
+        }
+
+    # Contagem em tempo real de raias, elementos BPMN e fluxos já escritos no stream
+    trecho_raias = ''
+    if tem_raias:
+        apos_raias = acumulado.split('"raias"', 1)[1]
+        trecho_raias = apos_raias.split('"elementos"', 1)[0] if tem_elementos else apos_raias
+    num_raias = max(1, len(re.findall(r'"id"\s*:', trecho_raias))) if tem_raias else 0
+    num_elementos = len(re.findall(r'"raia_id"\s*:', acumulado))
+    num_fluxos = len(re.findall(r'"destino"\s*:', acumulado))
+
+    if tem_fluxos and num_fluxos > 0:
+        progresso = min(90, 78 + num_fluxos)
+        return {
+            'etapa_indice': 2,
+            'progresso': progresso,
+            'detalhe': f'{num_raias} raia(s), {num_elementos} elemento(s) e {num_fluxos} conexão(ões) de fluxo mapeadas ao vivo...',
+        }
+
+    if tem_elementos and num_elementos > 0:
+        progresso = min(77, 52 + num_elementos * 2)
+        return {
+            'etapa_indice': 2,
+            'progresso': progresso,
+            'detalhe': f'{num_raias} raia(s) e {num_elementos} elemento(s) BPMN (tarefas/gateways) estruturados ao vivo...',
+        }
+
+    progresso = min(52, 45 + num_raias * 2)
+    return {
+        'etapa_indice': 2,
+        'progresso': progresso,
+        'detalhe': f'Identificando raias departamentais ({num_raias} raia(s) mapeada(s))...',
+    }
+
+
+def _validar_entrevista_para_geracao(processo: Processo) -> dict[str, str]:
     entrevista = getattr(processo, 'entrevista', None)
     respostas: dict[str, str] = dict(entrevista.respostas) if entrevista else {}
 
@@ -700,19 +783,17 @@ def gerar_fluxo_bpmn_com_ia(
             raise LLMServiceError(
                 'Responda às perguntas da entrevista guiada antes de gerar o BPMN com IA.'
             )
+    return respostas
 
-    client = llm_client or LLMClient()
-    user_prompt = montar_prompt_usuario(processo, respostas)
 
-    inicio_chamada = time.perf_counter()
-    dados_json, completion_res = client.gerar_json(
-        system_prompt=SYSTEM_PROMPT_BPMN,
-        user_prompt=user_prompt,
-        temperature=0.1,
-        usuario_identificador=usuario.email,
-    )
-    latencia_segundos = round(time.perf_counter() - inicio_chamada, 2)
-
+def _persistir_versao_gerada(
+    *,
+    processo: Processo,
+    usuario: User,
+    dados_json: dict[str, Any],
+    completion_res: Any,
+    latencia_segundos: float,
+) -> VersaoFluxoBPMN:
     try:
         estrutura = BpmnEstruturaGerada.model_validate(dados_json)
     except ValidationError as exc:
@@ -751,6 +832,131 @@ def gerar_fluxo_bpmn_com_ia(
             'origem': origem,
             'motivo_alteracao': motivo,
         },
+    )
+
+
+def gerar_fluxo_bpmn_com_ia_stream(
+    *,
+    processo: Processo,
+    usuario: User,
+    llm_client: LLMClient | None = None,
+):
+    """
+    Gerador que transmite eventos reais de progresso à medida que os tokens do JSON
+    são gerados pela LLM (stream=True), compila o XML BPMN 2.0 e persiste a versão ao final.
+    """
+    from core.services.llm_client import extrair_json_da_resposta
+
+    respostas = _validar_entrevista_para_geracao(processo)
+    client = llm_client or LLMClient()
+    user_prompt = montar_prompt_usuario(processo, respostas)
+    media_historica = obter_latencia_media_historica()
+
+    yield {
+        'type': 'progress',
+        'etapa_indice': 0,
+        'progresso': 8,
+        'detalhe': 'Prompt contextual enviado ao motor de IA; aguardando início do streaming de tokens...',
+        'media_historica_segundos': media_historica,
+    }
+
+    inicio_chamada = time.perf_counter()
+    if hasattr(client, 'iterar_completacao_stream'):
+        holder: list[Any] = []
+        ultimo_envio = 0.0
+        ultimo_estado: tuple[int, int, str] | None = None
+
+        for acumulado in client.iterar_completacao_stream(
+            system_prompt=SYSTEM_PROMPT_BPMN,
+            user_prompt=user_prompt,
+            temperature=0.1,
+            usuario_identificador=usuario.email,
+            resultado_holder=holder,
+        ):
+            agora = time.perf_counter()
+            info = analisar_progresso_parcial_json(acumulado)
+            chave_estado = (info['etapa_indice'], info['progresso'], info['detalhe'])
+            mudou_etapa = ultimo_estado is None or info['etapa_indice'] != ultimo_estado[0]
+            if mudou_etapa or (chave_estado != ultimo_estado and (agora - ultimo_envio) >= 0.25):
+                ultimo_envio = agora
+                ultimo_estado = chave_estado
+                yield {
+                    'type': 'progress',
+                    'etapa_indice': info['etapa_indice'],
+                    'progresso': info['progresso'],
+                    'detalhe': info['detalhe'],
+                    'media_historica_segundos': media_historica,
+                }
+
+        if not holder:
+            raise LLMServiceError('O stream do provedor de IA encerrou sem retornar conteúdo.')
+        completion_res = holder[0]
+        dados_json = extrair_json_da_resposta(completion_res.content)
+    else:
+        dados_json, completion_res = client.gerar_json(
+            system_prompt=SYSTEM_PROMPT_BPMN,
+            user_prompt=user_prompt,
+            temperature=0.1,
+            usuario_identificador=usuario.email,
+        )
+
+    latencia_segundos = round(time.perf_counter() - inicio_chamada, 2)
+
+    yield {
+        'type': 'progress',
+        'etapa_indice': 3,
+        'progresso': 94,
+        'detalhe': 'Validando schema Pydantic, calculando coordenadas ortogonais XML e salvando versão...',
+        'media_historica_segundos': media_historica,
+    }
+
+    versao = _persistir_versao_gerada(
+        processo=processo,
+        usuario=usuario,
+        dados_json=dados_json,
+        completion_res=completion_res,
+        latencia_segundos=latencia_segundos,
+    )
+
+    yield {
+        'type': 'complete',
+        'etapa_indice': 3,
+        'progresso': 100,
+        'latencia_segundos': latencia_segundos,
+        'versao_id': str(versao.id),
+        'media_historica_segundos': media_historica,
+    }
+
+
+def gerar_fluxo_bpmn_com_ia(
+    *,
+    processo: Processo,
+    usuario: User,
+    llm_client: LLMClient | None = None,
+) -> VersaoFluxoBPMN:
+    """
+    Orquestra a geração do diagrama BPMN 2.0 via IA a partir da entrevista guiada do processo,
+    valida a estrutura com Pydantic, compila o XML BPMN 2.0 com raias e persiste a nova VersaoFluxoBPMN.
+    """
+    respostas = _validar_entrevista_para_geracao(processo)
+    client = llm_client or LLMClient()
+    user_prompt = montar_prompt_usuario(processo, respostas)
+
+    inicio_chamada = time.perf_counter()
+    dados_json, completion_res = client.gerar_json(
+        system_prompt=SYSTEM_PROMPT_BPMN,
+        user_prompt=user_prompt,
+        temperature=0.1,
+        usuario_identificador=usuario.email,
+    )
+    latencia_segundos = round(time.perf_counter() - inicio_chamada, 2)
+
+    return _persistir_versao_gerada(
+        processo=processo,
+        usuario=usuario,
+        dados_json=dados_json,
+        completion_res=completion_res,
+        latencia_segundos=latencia_segundos,
     )
 
 
