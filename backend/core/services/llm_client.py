@@ -99,6 +99,204 @@ class LLMClient:
         dados = extrair_json_da_resposta(resultado.content)
         return dados, resultado
 
+    def iterar_completacao_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+        usuario_identificador: str | None = None,
+        resultado_holder: list[LLMCompletionResult] | None = None,
+    ):
+        """
+        Iterador gerador que consome a resposta da LLM em modo streaming (stream=True)
+        tanto para LiteLLM quanto para OpenAI/DeepSeek/Ollama local, produzindo o texto
+        acumulado a cada chunk recebido e populando `resultado_holder` ao final.
+        """
+        self._validar_configuracao()
+        messages = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt},
+        ]
+
+        if self.provider == 'litellm':
+            yield from self._stream_via_litellm(
+                messages=messages,
+                temperature=temperature,
+                usuario_identificador=usuario_identificador,
+                resultado_holder=resultado_holder,
+            )
+            return
+
+        if self.provider in ('openai_compatible', 'openai', 'deepseek', 'local', 'ollama'):
+            yield from self._stream_via_openai_compatible(
+                messages=messages,
+                temperature=temperature,
+                usuario_identificador=usuario_identificador,
+                resultado_holder=resultado_holder,
+            )
+            return
+
+        raise LLMServiceError(f"Provedor de IA '{self.provider}' não suportado.")
+
+    def _stream_via_litellm(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float,
+        usuario_identificador: str | None = None,
+        resultado_holder: list[LLMCompletionResult] | None = None,
+    ):
+        try:
+            import litellm
+        except ImportError as exc:
+            raise LLMServiceError(
+                'Pacote litellm não está instalado no ambiente. '
+                'Instale com "pip install -r requirements.txt" ou use LLM_PROVIDER=openai_compatible.'
+            ) from exc
+
+        kwargs: dict[str, Any] = {
+            'model': self.model,
+            'messages': messages,
+            'temperature': temperature,
+            'timeout': self.timeout,
+            'stream': True,
+            'stream_options': {'include_usage': True},
+        }
+        if self.api_key:
+            kwargs['api_key'] = self.api_key
+        if self.base_url:
+            kwargs['api_base'] = self.base_url
+        if usuario_identificador:
+            kwargs['user'] = usuario_identificador
+
+        try:
+            try:
+                stream_resp = litellm.completion(**kwargs)
+            except Exception:
+                kwargs.pop('stream_options', None)
+                stream_resp = litellm.completion(**kwargs)
+
+            partes: list[str] = []
+            acumulado = ''
+            model_usado = self.model
+            usage: dict[str, int] = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+
+            for chunk in stream_resp:
+                if getattr(chunk, 'model', None):
+                    model_usado = chunk.model
+                usage_obj = getattr(chunk, 'usage', None)
+                if usage_obj:
+                    usage = {
+                        'prompt_tokens': getattr(usage_obj, 'prompt_tokens', 0) or 0,
+                        'completion_tokens': getattr(usage_obj, 'completion_tokens', 0) or 0,
+                        'total_tokens': getattr(usage_obj, 'total_tokens', 0) or 0,
+                    }
+                choices = getattr(chunk, 'choices', None) or []
+                if choices:
+                    delta = getattr(choices[0], 'delta', None)
+                    piece = getattr(delta, 'content', None) if delta else None
+                    if piece:
+                        partes.append(piece)
+                        acumulado += piece
+                        yield acumulado
+
+            if usage['total_tokens'] == 0 and acumulado:
+                est_comp = max(1, len(acumulado) // 4)
+                usage = {'prompt_tokens': 0, 'completion_tokens': est_comp, 'total_tokens': est_comp}
+
+            if resultado_holder is not None:
+                resultado_holder.append(
+                    LLMCompletionResult(
+                        content=acumulado,
+                        model=model_usado,
+                        provider='litellm',
+                        usage=usage,
+                    )
+                )
+        except Exception as exc:
+            raise LLMServiceError(
+                f'Não foi possível obter resposta do provedor de IA ({self.model}): {exc}'
+            ) from exc
+
+    def _stream_via_openai_compatible(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float,
+        usuario_identificador: str | None = None,
+        resultado_holder: list[LLMCompletionResult] | None = None,
+    ):
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise LLMServiceError('Pacote openai não está instalado no ambiente.') from exc
+
+        client_kwargs: dict[str, Any] = {
+            'api_key': self.api_key or 'local-no-key',
+            'timeout': self.timeout,
+        }
+        if self.base_url:
+            client_kwargs['base_url'] = self.base_url
+
+        try:
+            client = OpenAI(**client_kwargs)
+            req_kwargs: dict[str, Any] = {
+                'model': self.model,
+                'messages': messages,
+                'temperature': temperature,
+                'stream': True,
+                'stream_options': {'include_usage': True},
+            }
+            if usuario_identificador:
+                req_kwargs['user'] = usuario_identificador
+
+            try:
+                stream_resp = client.chat.completions.create(**req_kwargs)
+            except Exception:
+                req_kwargs.pop('stream_options', None)
+                stream_resp = client.chat.completions.create(**req_kwargs)
+
+            acumulado = ''
+            model_usado = self.model
+            usage: dict[str, int] = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+
+            for chunk in stream_resp:
+                if getattr(chunk, 'model', None):
+                    model_usado = chunk.model
+                usage_obj = getattr(chunk, 'usage', None)
+                if usage_obj:
+                    usage = {
+                        'prompt_tokens': getattr(usage_obj, 'prompt_tokens', 0) or 0,
+                        'completion_tokens': getattr(usage_obj, 'completion_tokens', 0) or 0,
+                        'total_tokens': getattr(usage_obj, 'total_tokens', 0) or 0,
+                    }
+                choices = getattr(chunk, 'choices', None) or []
+                if choices:
+                    delta = getattr(choices[0], 'delta', None)
+                    piece = getattr(delta, 'content', None) if delta else None
+                    if piece:
+                        acumulado += piece
+                        yield acumulado
+
+            if usage['total_tokens'] == 0 and acumulado:
+                est_comp = max(1, len(acumulado) // 4)
+                usage = {'prompt_tokens': 0, 'completion_tokens': est_comp, 'total_tokens': est_comp}
+
+            if resultado_holder is not None:
+                resultado_holder.append(
+                    LLMCompletionResult(
+                        content=acumulado,
+                        model=model_usado,
+                        provider=self.provider,
+                        usage=usage,
+                    )
+                )
+        except Exception as exc:
+            raise LLMServiceError(
+                f'Não foi possível obter resposta do servidor compatível com OpenAI ({self.model}): {exc}'
+            ) from exc
+
     def _chamar_via_litellm(
         self,
         *,

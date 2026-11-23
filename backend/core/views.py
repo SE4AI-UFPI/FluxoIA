@@ -1,4 +1,8 @@
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
+from django.http import StreamingHttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -236,6 +240,38 @@ class ProcessoViewSet(viewsets.ModelViewSet):
                 usuario=request.user,
             )
             processo.refresh_from_db()
+
+        usar_stream = (
+            request.query_params.get('stream') == '1'
+            or request.data.get('stream') is True
+        )
+
+        if usar_stream:
+            def stream_eventos():
+                try:
+                    for evento in bpmn_ai_service.gerar_fluxo_bpmn_com_ia_stream(
+                        processo=processo,
+                        usuario=request.user,
+                    ):
+                        if evento.get('type') == 'complete':
+                            processo_atualizado = self.get_queryset().get(pk=processo.pk)
+                            evento = {
+                                **evento,
+                                'processo': self.get_serializer(processo_atualizado).data,
+                            }
+                        yield json.dumps(evento, cls=DjangoJSONEncoder, ensure_ascii=False) + '\n'
+                except LLMServiceError as exc:
+                    yield json.dumps({'type': 'error', 'detail': str(exc)}, ensure_ascii=False) + '\n'
+                except Exception as exc:
+                    yield json.dumps(
+                        {'type': 'error', 'detail': f'Falha inesperada na geração com IA: {exc}'},
+                        ensure_ascii=False,
+                    ) + '\n'
+
+            resp = StreamingHttpResponse(stream_eventos(), content_type='application/x-ndjson')
+            resp['Cache-Control'] = 'no-cache'
+            resp['X-Accel-Buffering'] = 'no'
+            return resp
 
         try:
             bpmn_ai_service.gerar_fluxo_bpmn_com_ia(

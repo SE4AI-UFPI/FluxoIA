@@ -6,13 +6,16 @@ import {
   ImageDown,
   Loader2,
   Maximize2,
+  Minimize2,
   Minus,
   Move,
   Plus,
+  X,
 } from 'lucide-react'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-js.css'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from '@/features/process-mapping/components/BPMNLegenda'
 import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
@@ -68,6 +71,7 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const viewerRef = React.useRef<NavigatedViewer | null>(null)
   const [carregando, setCarregando] = React.useState(true)
+  const [ampliado, setAmpliado] = React.useState(false)
   const [erro, setErro] = React.useState<string | null>(null)
 
   const ajustarTela = React.useCallback(() => {
@@ -179,12 +183,31 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
     ajustarTela()
   }
 
-  async function telaCheia() {
-    const elemento = containerRef.current
-    if (!elemento) return
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await elemento.requestFullscreen()
+  function alternarAmpliado() {
+    setAmpliado((prev) => !prev)
   }
+
+  React.useEffect(() => {
+    window.requestAnimationFrame(() => {
+      ajustarTela()
+    })
+  }, [ampliado, ajustarTela])
+
+  React.useEffect(() => {
+    if (!ampliado) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAmpliado(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [ampliado])
 
   async function baixarXml() {
     const resultado = await viewerRef.current?.saveXML({ format: true })
@@ -262,10 +285,37 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
   }
 
   return (
-    <section aria-label="Visualizador BPMN" className="space-y-2">
+    <section
+      aria-label="Visualizador BPMN"
+      className={
+        ampliado
+          ? 'fixed inset-0 z-50 flex flex-col gap-2.5 bg-fx-papel p-3 sm:p-5 shadow-2xl'
+          : 'space-y-2'
+      }
+    >
+      {ampliado && (
+        <div className="flex items-center justify-between border-b border-fx-linha pb-2">
+          <div className="flex items-center gap-2.5">
+            <Badge variant="secondary" className="text-xs">Modo Ampliado</Badge>
+            <h3 className="text-sm sm:text-base font-semibold text-fx-marinho">
+              Diagrama BPMN 2.0 {nomeProcesso ? `· ${nomeProcesso}` : ''}
+            </h3>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAmpliado(false)}
+            title="Fechar visualização ampliada (Esc)"
+          >
+            <X className="mr-1.5 h-4 w-4" /> Fechar Ampliação (Esc)
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-2">
         <p className="text-[11px] text-fx-cinza">
-          Modo consulta: use o scroll para navegar, Ctrl + scroll para ampliar ou os botões de zoom.
+          Modo consulta: use o scroll para navegar, Ctrl + scroll para ampliar ou clique em "Ampliar Diagrama" para tela cheia.
         </p>
         <div className="flex flex-wrap items-center gap-1">
           <Button type="button" size="sm" variant="outline" onClick={centralizar} title="Centralizar fluxo">
@@ -304,14 +354,22 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
           </Button>
           <Button
             type="button"
-            size="icon"
-            variant="outline"
-            className="h-8 w-8"
-            aria-label="Tela cheia"
-            title="Fullscreen"
-            onClick={() => void telaCheia()}
+            size="sm"
+            variant={ampliado ? 'default' : 'outline'}
+            aria-label={ampliado ? 'Reduzir visualização do diagrama' : 'Ampliar visualização do diagrama'}
+            aria-pressed={ampliado}
+            title={ampliado ? 'Sair do modo ampliado (Esc)' : 'Ampliar o diagrama em tela cheia para facilitar a leitura'}
+            onClick={alternarAmpliado}
           >
-            <Expand className="h-4 w-4" />
+            {ampliado ? (
+              <>
+                <Minimize2 className="mr-1.5 h-3.5 w-3.5" /> Reduzir Tela
+              </>
+            ) : (
+              <>
+                <Expand className="mr-1.5 h-3.5 w-3.5" /> Ampliar Diagrama
+              </>
+            )}
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={() => void baixarXml()} title="Baixar XML BPMN">
             <FileCode2 className="mr-1 h-3.5 w-3.5" /> XML
@@ -330,8 +388,33 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
 
       <div
         ref={containerRef}
-        className="relative h-[55vh] min-h-80 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner"
+        className={
+          ampliado
+            ? 'relative flex-1 min-h-0 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner'
+            : 'relative h-[55vh] min-h-80 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner'
+        }
       >
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 bg-white/95 shadow-xs backdrop-blur-xs hover:bg-fx-nevoa/60 text-xs font-medium"
+            onClick={alternarAmpliado}
+            title={ampliado ? 'Reduzir visualização (Esc)' : 'Ampliar visualização do diagrama'}
+          >
+            {ampliado ? (
+              <>
+                <Minimize2 className="mr-1.5 h-3.5 w-3.5 text-fx-azul" /> Reduzir (Esc)
+              </>
+            ) : (
+              <>
+                <Expand className="mr-1.5 h-3.5 w-3.5 text-fx-azul" /> Ampliar
+              </>
+            )}
+          </Button>
+        </div>
+
         {carregando && (
           <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-fx-papel/85 text-sm text-fx-cinza">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando diagrama...

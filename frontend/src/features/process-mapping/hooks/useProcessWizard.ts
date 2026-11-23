@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import type { Usuario } from '@/types/auth'
 import {
+  type BpmnStreamProgress,
   createInitialProcess,
   fetchProcessoByIdFromApi,
   generateBpmnWithAiFromApi,
@@ -19,8 +20,6 @@ import {
 } from '../services/process.service'
 import {
   canEditBpmnLayout,
-  diagramaPrecisaLayout,
-  gerarLayoutAutomatico,
   MOTIVO_BLOQUEIO_EDICAO,
 } from '../services/bpmn-layout.service'
 import type {
@@ -69,6 +68,7 @@ export function useProcessWizard(user: Usuario) {
     !startFresh && isProcessStarted(process) ? process.updatedAt : null,
   )
   const [isGeneratingBpmn, setIsGeneratingBpmn] = React.useState(false)
+  const [aiGenerationProgress, setAiGenerationProgress] = React.useState<BpmnStreamProgress | null>(null)
   const [aiGenerationError, setAiGenerationError] = React.useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = React.useState(false)
   const [layoutError, setLayoutError] = React.useState<string | null>(null)
@@ -84,62 +84,12 @@ export function useProcessWizard(user: Usuario) {
   const viewedStep = isReadOnly ? consultationStep ?? process.step : process.step
   const versionControl = useVersionControl()
 
-  /**
-   * Aplica o auto layout ao diagrama gerado e persiste o resultado.
-   *
-   * Nenhuma falha aqui pode interromper a geração: se o layout ou o salvamento
-   * falharem, o estado recebido é devolvido (com o XML organizado quando possível).
-   */
-  const aplicarLayoutAutomatico = React.useCallback(async function aplicarLayoutAutomatico(
-    estado: ProcessWizardState,
-    backendId: string,
-    opcoes: { somenteSeNecessario?: boolean } = {},
-  ): Promise<ProcessWizardState> {
-    if (!estado.bpmnXml) return estado
-    if (!canEditBpmnLayout(estado.status)) return estado
-
-    // Evita reescrever diagramas que já estão corretos (idempotência).
-    if (opcoes.somenteSeNecessario && !diagramaPrecisaLayout(estado.bpmnXml)) return estado
-
-    let organizado: string
-    try {
-      organizado = await gerarLayoutAutomatico(estado.bpmnXml)
-    } catch {
-      return estado
-    }
-    if (!organizado || organizado === estado.bpmnXml) return estado
-
-    try {
-      const atualizado = await saveBpmnLayoutToApi(backendId, organizado)
-      const remapeado = mapApiProcessoToWizardState(atualizado, user.id, defaultSector)
-      return { ...remapeado, bpmnXml: organizado }
-    } catch {
-      // Persistência best-effort: o diagrama organizado segue no rascunho local.
-      return { ...estado, bpmnXml: organizado }
-    }
-  }, [user.id, defaultSector])
-
   React.useEffect(() => {
     if (searchParams.get('novo') !== '1') return
     const next = new URLSearchParams(searchParams)
     next.delete('novo')
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
-
-  React.useEffect(() => {
-    if (processoQueryId || !process.bpmnXml || !canMutate) return
-    if (!diagramaPrecisaLayout(process.bpmnXml)) return
-    let active = true
-    void gerarLayoutAutomatico(process.bpmnXml)
-      .then((organizado) => {
-        if (!active || !organizado || organizado === process.bpmnXml) return
-        setProcess((current) => ({ ...current, bpmnXml: organizado }))
-      })
-      .catch(() => undefined)
-    return () => {
-      active = false
-    }
-  }, [processoQueryId, process.id, process.bpmnXml, canMutate])
 
   React.useEffect(() => {
     if (!processoQueryId || !user.id) return
@@ -157,17 +107,6 @@ export function useProcessWizard(user: Usuario) {
         setLoadResult({ key: loadKey, error: null })
         if (editable) saveProcessDraft(mapped)
         setLastSavedAt(mapped.updatedAt)
-
-        // Reorganiza automaticamente o DI ao abrir em modo best-effort.
-        if (!editable) return
-        void aplicarLayoutAutomatico(mapped, apiProcesso.id, { somenteSeNecessario: true })
-          .then((normalizado) => {
-            if (cancellation.signal.aborted || normalizado === mapped) return
-            setProcess(normalizado)
-            saveProcessDraft(normalizado)
-            setLastSavedAt(normalizado.updatedAt)
-          })
-          .catch(() => undefined)
       })
       .catch((error) => {
         if (cancellation.signal.aborted) return
@@ -180,7 +119,7 @@ export function useProcessWizard(user: Usuario) {
     return () => {
       cancellation.abort()
     }
-  }, [processoQueryId, user.id, defaultSector, loadKey, aplicarLayoutAutomatico])
+  }, [processoQueryId, user.id, defaultSector, loadKey])
 
   React.useEffect(() => {
     if (!canMutate) return
@@ -256,6 +195,11 @@ export function useProcessWizard(user: Usuario) {
   async function generateBpmn() {
     if (!canMutate) return
     setIsGeneratingBpmn(true)
+    setAiGenerationProgress({
+      etapaIndice: 0,
+      progresso: 5,
+      detalhe: 'Sincronizando respostas da entrevista com o servidor...',
+    })
     setAiGenerationError(null)
 
     try {
@@ -264,15 +208,15 @@ export function useProcessWizard(user: Usuario) {
         throw new Error('Não foi possível sincronizar o processo com o servidor para iniciar a geração por IA.')
       }
 
-      const apiProcesso = await generateBpmnWithAiFromApi(backendId, process.answers)
+      const apiProcesso = await generateBpmnWithAiFromApi(
+        backendId,
+        process.answers,
+        (progressoReal) => setAiGenerationProgress(progressoReal),
+      )
       const mapped = mapApiProcessoToWizardState(apiProcesso, user.id, defaultSector)
 
-      // Etapa de Auto Layout: reorganiza apenas o DI do diagrama recém-gerado.
-      // Roda em modo best-effort — se falhar, o XML original da IA é mantido.
-      const estadoComLayout = await aplicarLayoutAutomatico(mapped, backendId)
-
       const nextState: ProcessWizardState = {
-        ...estadoComLayout,
+        ...mapped,
         step: 3,
         status: resolveWizardStatus(process.status, 'Em Modelagem BPMN'),
       }
@@ -438,6 +382,7 @@ export function useProcessWizard(user: Usuario) {
     allowedSectors,
     lastSavedAt,
     isGeneratingBpmn,
+    aiGenerationProgress,
     aiGenerationError,
     isSavingLayout,
     layoutError,
