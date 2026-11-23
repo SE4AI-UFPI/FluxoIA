@@ -7,11 +7,13 @@ import {
   LayoutDashboard,
   Loader2,
   Maximize2,
+  Minimize2,
   Minus,
   Move,
   Plus,
   Save,
   Undo2,
+  X,
 } from 'lucide-react'
 import BpmnModeler from 'bpmn-js/lib/Modeler'
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
@@ -151,6 +153,7 @@ export function BPMNEditor({
   const edicaoDisponivel = statusPermiteEdicao && !isSmallScreen
 
   const [isEditing, setIsEditing] = React.useState(false)
+  const [isExpanded, setIsExpanded] = React.useState(false)
   const [xmlVigente, setXmlVigente] = React.useState(xml)
   const [dirty, setDirty] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
@@ -458,17 +461,63 @@ export function BPMNEditor({
     }
   }
 
-  async function toggleFullscreen() {
-    const element = containerRef.current
-    if (!element) return
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await element.requestFullscreen()
+  function toggleExpanded() {
+    setIsExpanded((prev) => !prev)
   }
+
+  React.useEffect(() => {
+    window.requestAnimationFrame(() => {
+      enquadrar()
+    })
+  }, [isExpanded, enquadrar])
+
+  React.useEffect(() => {
+    if (!isExpanded) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsExpanded(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isExpanded])
 
   const ocupado = loading || isSaving
 
   return (
-    <section aria-label="Editor de diagrama BPMN" className="space-y-2">
+    <section
+      aria-label="Editor de diagrama BPMN"
+      className={
+        isExpanded
+          ? 'fixed inset-0 z-50 flex flex-col gap-2.5 bg-fx-papel p-3 sm:p-5 shadow-2xl'
+          : 'space-y-2'
+      }
+    >
+      {isExpanded && (
+        <div className="flex items-center justify-between border-b border-fx-linha pb-2">
+          <div className="flex items-center gap-2.5">
+            <Badge variant="secondary" className="text-xs">Modo Ampliado</Badge>
+            <h3 className="text-sm sm:text-base font-semibold text-fx-marinho">
+              Diagrama BPMN 2.0 {processName ? `· ${processName}` : ''}
+            </h3>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setIsExpanded(false)}
+            title="Fechar visualização ampliada (Esc)"
+          >
+            <X className="mr-1.5 h-4 w-4" /> Fechar Ampliação (Esc)
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2 rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {edicaoDisponivel && (
@@ -527,14 +576,22 @@ export function BPMNEditor({
           </Button>
           <Button
             type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Tela cheia"
-            title="Fullscreen"
-            onClick={() => void toggleFullscreen()}
+            variant={isExpanded ? 'default' : 'outline'}
+            size="sm"
+            aria-label={isExpanded ? 'Reduzir visualização do diagrama' : 'Ampliar visualização do diagrama'}
+            aria-pressed={isExpanded}
+            title={isExpanded ? 'Sair do modo ampliado (Esc)' : 'Ampliar o diagrama em tela cheia para facilitar a leitura'}
+            onClick={toggleExpanded}
           >
-            <Expand className="h-4 w-4" />
+            {isExpanded ? (
+              <>
+                <Minimize2 className="mr-1.5 h-3.5 w-3.5" /> Reduzir Tela
+              </>
+            ) : (
+              <>
+                <Expand className="mr-1.5 h-3.5 w-3.5" /> Ampliar Diagrama
+              </>
+            )}
           </Button>
           {isEditing && (
             <Button
@@ -568,7 +625,7 @@ export function BPMNEditor({
           <p className="text-[11px] text-fx-cinza">
             {isEditing
               ? 'Modo edição visual: arraste elementos, linhas de conexão e divisórias das raias para reorganizar. Somente o layout é alterado — a lógica do processo permanece intacta.'
-              : 'Modo visualização: use o scroll para navegar, Ctrl + scroll para ampliar ou os botões de zoom.'}
+              : 'Modo visualização: use o scroll para navegar, Ctrl + scroll para ampliar ou clique em "Ampliar Diagrama" para leitura em tela cheia.'}
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
             {dirty && <Badge variant="secondary">Ajustes não salvos</Badge>}
@@ -615,7 +672,7 @@ export function BPMNEditor({
         </div>
       </div>
 
-      {!statusPermiteEdicao && (
+      {!statusPermiteEdicao && !isExpanded && (
         <p className="rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-2 text-xs text-fx-cinza">
           {readOnly ? 'Este diagrama está disponível somente para consulta.' : MOTIVO_BLOQUEIO_EDICAO}
         </p>
@@ -630,8 +687,33 @@ export function BPMNEditor({
         ref={containerRef}
         data-editing={isEditing ? 'true' : 'false'}
         data-xml-len={normatizarXml(xmlVigente).length}
-        className="relative h-[60vh] min-h-100 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner"
+        className={
+          isExpanded
+            ? 'relative flex-1 min-h-0 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner'
+            : 'relative h-[60vh] min-h-100 overflow-hidden rounded-sm border border-fx-linha bg-white shadow-inner'
+        }
       >
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 bg-white/95 shadow-xs backdrop-blur-xs hover:bg-fx-nevoa/60 text-xs font-medium"
+            onClick={toggleExpanded}
+            title={isExpanded ? 'Reduzir visualização (Esc)' : 'Ampliar visualização do diagrama'}
+          >
+            {isExpanded ? (
+              <>
+                <Minimize2 className="mr-1.5 h-3.5 w-3.5 text-fx-azul" /> Reduzir (Esc)
+              </>
+            ) : (
+              <>
+                <Expand className="mr-1.5 h-3.5 w-3.5 text-fx-azul" /> Ampliar
+              </>
+            )}
+          </Button>
+        </div>
+
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-fx-papel/85 text-sm text-fx-cinza">
             Carregando diagrama...
