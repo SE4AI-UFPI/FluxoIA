@@ -240,8 +240,10 @@ export function FeedbackStep({
           : submitted ? 'Processo encaminhado para validação' : 'Consulta do mapeamento'
 
     const statusDescription =
-      process.status === 'Publicado' || process.status === 'Aprovado'
-        ? 'Este fluxo já foi homologado pela governança e encontra-se bloqueado para edições.'
+      process.status === 'Publicado'
+        ? 'O coordenador deu o aval final. Este fluxo é a versão oficial e está bloqueado para edições.'
+        : process.status === 'Aprovado'
+        ? 'Homologado pela supervisão e aguardando o aval final do coordenador para ser publicado. Bloqueado para edições.'
         : submitted ? 'O fluxo e a avaliação da IA foram confirmados e aguardam análise do supervisor.' : 'Somente leitura · Dados registrados pelo autor do mapeamento.'
 
     return (

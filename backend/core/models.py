@@ -104,7 +104,7 @@ class StatusProcesso(models.TextChoices):
     EM_AVALIACAO = 'em_avaliacao', 'Em Avaliação'
     AGUARDANDO_VALIDACAO = 'aguardando_validacao', 'Aguardando Validação do Gestor'
     AJUSTES_SOLICITADOS = 'ajustes_solicitados', 'Ajustes Solicitados'
-    APROVADO = 'aprovado', 'Aprovado'
+    APROVADO = 'aprovado', 'Homologado pela Supervisão'
     PUBLICADO = 'publicado', 'Publicado'
     EXCLUIDO = 'excluido', 'Excluído'
 
@@ -138,8 +138,17 @@ class Processo(models.Model):
         blank=True,
         related_name='processos_aprovados',
     )
+    publicado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='processos_publicados',
+        help_text='Coordenador que deu o aval final e publicou o processo.',
+    )
     submetido_em = models.DateTimeField('submetido em', null=True, blank=True)
     aprovado_em = models.DateTimeField('aprovado em', null=True, blank=True)
+    publicado_em = models.DateTimeField('publicado em', null=True, blank=True)
     criado_em = models.DateTimeField('criado em', auto_now_add=True)
     atualizado_em = models.DateTimeField('atualizado em', auto_now=True)
 
@@ -320,6 +329,11 @@ class DecisaoGovernanca(models.TextChoices):
     REJEITADO = 'rejeitado', 'Rejeitado'
 
 
+class EtapaGovernanca(models.TextChoices):
+    SUPERVISAO = 'supervisao', 'Homologação técnica (supervisor)'
+    COORDENACAO = 'coordenacao', 'Aval final (coordenador)'
+
+
 class RevisaoGovernanca(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     processo = models.ForeignKey(
@@ -338,6 +352,12 @@ class RevisaoGovernanca(models.Model):
         User,
         on_delete=models.PROTECT,
         related_name='revisoes_realizadas',
+    )
+    etapa = models.CharField(
+        'etapa da governança',
+        max_length=20,
+        choices=EtapaGovernanca.choices,
+        default=EtapaGovernanca.SUPERVISAO,
     )
     decisao = models.CharField('decisão', max_length=25, choices=DecisaoGovernanca.choices)
     parecer = models.TextField('parecer do revisor', blank=True, default='')

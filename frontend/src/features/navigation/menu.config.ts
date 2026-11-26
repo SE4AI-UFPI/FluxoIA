@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   MessageSquareText,
   ShieldCheck,
+  Stamp,
   UsersRound,
   Workflow,
 } from 'lucide-react'
@@ -40,6 +41,13 @@ export const MENU_ITEMS: MenuConfigItem[] = [
     path: '/governanca',
     icon: ShieldCheck,
     permission: 'governance:validate',
+  },
+  {
+    id: 'final-approval',
+    label: 'Aval Final & Publicação',
+    path: '/publicacao',
+    icon: Stamp,
+    permission: 'governance:publish',
   },
   {
     id: 'indicators',

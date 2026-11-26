@@ -31,7 +31,7 @@ export function SupervisorStats({ indicadores }: { indicadores: IndicadoresSuper
     {
       titulo: 'Processos Homologados',
       valor: String(indicadores.homologadosPeriodo),
-      detalhe: `${indicadores.publicados} publicados · ${indicadores.aprovadosSemPublicacao} aguardando publicação`,
+      detalhe: `${indicadores.publicados} publicados · ${indicadores.aprovadosSemPublicacao} aguardando aval do coordenador`,
       icone: CheckCircle2,
       destaque: false,
     },

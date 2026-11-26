@@ -59,7 +59,7 @@ const PERFIS: Array<{
   {
     id: 'coordenador',
     nome: 'Coordenador',
-    descricao: 'Coordenação operacional e gestão das equipes.',
+    descricao: 'Coordena as equipes e dá o aval final que publica os mapeamentos homologados.',
     Icone: Users,
   },
   {
@@ -84,6 +84,7 @@ const PERMISSOES_POR_PERFIL: Record<PerfilCadastro, Array<{ id: string; label: s
     { id: 'acessar_dashboard', label: 'Acessar dashboard' },
   ],
   coordenador: [
+    { id: 'publicar_processos', label: 'Dar aval final e publicar processos homologados' },
     { id: 'responder_entrevistas_guiadas', label: 'Responder entrevistas guiadas' },
     { id: 'gerar_editar_diagramas_institucionais', label: 'Gerar e editar diagramas institucionais' },
     { id: 'exportar_artefatos', label: 'Exportar artefatos em XML, BPMN e PDF' },

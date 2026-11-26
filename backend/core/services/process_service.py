@@ -7,6 +7,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from core.models import (
     DecisaoGovernanca,
     EntrevistaProcesso,
+    EtapaGovernanca,
     ExclusaoProcesso,
     FeedbackFluxoIA,
     OrigemVersaoBPMN,
@@ -72,9 +73,26 @@ ETAPA_POR_STATUS = {
 }
 
 
+PARECER_MINIMO_DEVOLUCAO = 15
+
+
 def _require_process_owner_or_admin(*, processo: Processo, usuario: User) -> None:
     if usuario.papel != PapelUsuario.ADMIN and processo.criado_por_id != usuario.id:
         raise PermissionDenied('Apenas o criador do processo ou um administrador pode alterá-lo.')
+
+
+def _setores_escopo(usuario: User) -> set[str]:
+    """Setor do usuário mais os setores vinculados pelo administrador."""
+    return {s for s in [usuario.setor, *(usuario.setores_vinculados or [])] if s}
+
+
+def _require_escopo_setor(*, usuario: User, processo: Processo, mensagem: str) -> None:
+    """Supervisores e coordenadores só atuam nos setores do seu escopo."""
+    if usuario.papel == PapelUsuario.ADMIN:
+        return
+    setores_escopo = _setores_escopo(usuario)
+    if setores_escopo and processo.setor not in setores_escopo:
+        raise PermissionDenied(mensagem)
 
 
 def gerar_codigo_processo(setor: str) -> str:
@@ -100,7 +118,7 @@ def listar_processos(
     busca: str | None = None,
 ) -> QuerySet[Processo]:
     """Lista processos aplicando regras de visibilidade RBAC e filtros."""
-    qs = Processo.objects.select_related('criado_por', 'aprovado_por', 'entrevista').prefetch_related(
+    qs = Processo.objects.select_related('criado_por', 'aprovado_por', 'publicado_por', 'entrevista').prefetch_related(
         'versoes_bpmn__gerado_por',
         'feedbacks_ia__autor',
         'revisoes_governanca__revisor',
@@ -109,12 +127,12 @@ def listar_processos(
 
     if usuario.papel == PapelUsuario.ADMIN:
         pass
-    elif usuario.papel == PapelUsuario.SUPERVISOR:
-        setores_escopo = [s for s in [usuario.setor, *(usuario.setores_vinculados or [])] if s]
-        filtro_supervisor = Q(criado_por=usuario)
+    elif usuario.papel in (PapelUsuario.SUPERVISOR, PapelUsuario.COORDENADOR):
+        setores_escopo = _setores_escopo(usuario)
+        filtro_governanca = Q(criado_por=usuario)
         if setores_escopo:
-            filtro_supervisor |= Q(setor__in=setores_escopo)
-        qs = qs.filter(filtro_supervisor)
+            filtro_governanca |= Q(setor__in=setores_escopo)
+        qs = qs.filter(filtro_governanca)
     else:
         filtro_usuario = Q(criado_por=usuario)
         if usuario.setor:
@@ -318,13 +336,18 @@ def revisar_processo_governanca(
     revisor: User,
     dados_revisao: dict,
 ) -> RevisaoGovernanca:
-    """Registra parecer de governança do supervisor/admin e atualiza o status do Processo."""
+    """Registra a homologação técnica do supervisor/admin (1ª etapa da governança).
+
+    Aprovar aqui não publica: o processo fica homologado e aguarda o aval final
+    do coordenador (`publicar_processo`).
+    """
     if revisor.papel not in (PapelUsuario.SUPERVISOR, PapelUsuario.ADMIN):
         raise PermissionDenied('Apenas supervisores ou administradores podem revisar processos.')
-    if revisor.papel == PapelUsuario.SUPERVISOR:
-        setores_escopo = {s for s in [revisor.setor, *(revisor.setores_vinculados or [])] if s}
-        if setores_escopo and processo.setor not in setores_escopo:
-            raise PermissionDenied('Você só pode revisar processos pertencentes aos seus setores supervisionados.')
+    _require_escopo_setor(
+        usuario=revisor,
+        processo=processo,
+        mensagem='Você só pode revisar processos pertencentes aos seus setores supervisionados.',
+    )
     if processo.status != StatusProcesso.AGUARDANDO_VALIDACAO:
         raise ValidationError({'status': 'Somente processos aguardando validação podem ser revisados.'})
 
@@ -335,6 +358,7 @@ def revisar_processo_governanca(
         processo=processo,
         versao_bpmn=dados_revisao.get('versao_bpmn') or ultima_versao,
         revisor=revisor,
+        etapa=EtapaGovernanca.SUPERVISAO,
         decisao=decisao,
         parecer=dados_revisao.get('parecer') or '',
     )
@@ -355,30 +379,65 @@ def revisar_processo_governanca(
     return revisao
 
 
-@transaction.atomic
-def publicar_processo(*, processo: Processo, usuario: User, parecer: str = '') -> Processo:
-    """Encaminha um processo homologado para a etapa institucional de publicação."""
-    if usuario.papel not in (PapelUsuario.SUPERVISOR, PapelUsuario.ADMIN):
-        raise PermissionDenied('Apenas supervisores ou administradores podem publicar processos.')
-    if usuario.papel == PapelUsuario.SUPERVISOR:
-        setores_escopo = {s for s in [usuario.setor, *(usuario.setores_vinculados or [])] if s}
-        if setores_escopo and processo.setor not in setores_escopo:
-            raise PermissionDenied('Você só pode publicar processos pertencentes aos seus setores supervisionados.')
+def _require_coordenador_ou_admin(*, processo: Processo, usuario: User, acao: str) -> None:
+    if usuario.papel not in (PapelUsuario.COORDENADOR, PapelUsuario.ADMIN):
+        raise PermissionDenied(f'Apenas coordenadores ou administradores podem {acao}.')
+    _require_escopo_setor(
+        usuario=usuario,
+        processo=processo,
+        mensagem=f'Você só pode {acao} de processos dos setores que coordena.',
+    )
     if processo.status != StatusProcesso.APROVADO:
         raise ValidationError(
-            {'status': 'Somente processos aprovados/homologados podem ser publicados.'}
+            {'status': 'Somente processos homologados pela supervisão aguardam o aval do coordenador.'}
+        )
+
+
+@transaction.atomic
+def publicar_processo(*, processo: Processo, usuario: User, parecer: str = '') -> Processo:
+    """Aval final do coordenador: publica um processo já homologado pelo supervisor."""
+    _require_coordenador_ou_admin(processo=processo, usuario=usuario, acao='dar o aval final')
+
+    RevisaoGovernanca.objects.create(
+        processo=processo,
+        versao_bpmn=processo.versoes_bpmn.order_by('-criado_em').first(),
+        revisor=usuario,
+        etapa=EtapaGovernanca.COORDENACAO,
+        decisao=DecisaoGovernanca.APROVADO,
+        parecer=parecer.strip() or 'Aval final concedido; processo publicado.',
+    )
+
+    processo.status = StatusProcesso.PUBLICADO
+    processo.publicado_por = usuario
+    processo.publicado_em = timezone.now()
+    processo.save(update_fields=['status', 'publicado_por', 'publicado_em', 'atualizado_em'])
+    return processo
+
+
+@transaction.atomic
+def devolver_para_supervisao(*, processo: Processo, usuario: User, parecer: str) -> Processo:
+    """Coordenador recusa o aval final e devolve o processo para nova análise do supervisor."""
+    _require_coordenador_ou_admin(processo=processo, usuario=usuario, acao='devolver à supervisão')
+
+    parecer = (parecer or '').strip()
+    if len(parecer) < PARECER_MINIMO_DEVOLUCAO:
+        raise ValidationError(
+            {'parecer': f'Explique a devolução com pelo menos {PARECER_MINIMO_DEVOLUCAO} caracteres.'}
         )
 
     RevisaoGovernanca.objects.create(
         processo=processo,
         versao_bpmn=processo.versoes_bpmn.order_by('-criado_em').first(),
         revisor=usuario,
-        decisao=DecisaoGovernanca.APROVADO,
-        parecer=f'[Publicação institucional] {parecer}'.strip(),
+        etapa=EtapaGovernanca.COORDENACAO,
+        decisao=DecisaoGovernanca.AJUSTES_SOLICITADOS,
+        parecer=parecer,
     )
 
-    processo.status = StatusProcesso.PUBLICADO
-    processo.save(update_fields=['status', 'atualizado_em'])
+    processo.status = StatusProcesso.AGUARDANDO_VALIDACAO
+    processo.aprovado_por = None
+    processo.aprovado_em = None
+    processo.save(update_fields=['status', 'aprovado_por', 'aprovado_em', 'atualizado_em'])
     return processo
 
 

@@ -132,6 +132,7 @@ def test_review_and_publication_responses_hide_interview(scenario):
     }, format='json')
     assert review.status_code == 200, review.data
     assert 'entrevista' not in review.data
+    client.force_authenticate(users['coordinator'])
     publication = client.post(f'/api/processos/{process.pk}/publicar/', {}, format='json')
     assert publication.status_code == 200, publication.data
     assert 'entrevista' not in publication.data

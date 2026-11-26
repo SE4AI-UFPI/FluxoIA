@@ -47,13 +47,16 @@ function montarEventos(processo: ProcessoBiblioteca): EventoHistorico[] {
   }
 
   for (const revisao of processo.revisoes) {
-    const publicacao = revisao.parecer.startsWith('[Publicação institucional]')
+    const coordenacao = revisao.etapa === 'coordenacao'
+    const publicacao = coordenacao && revisao.decisao === 'aprovado'
     eventos.push({
       id: `revisao-${revisao.id}`,
       tipo: publicacao ? 'publicacao' : revisao.decisao === 'aprovado' ? 'aprovacao' : 'correcao',
       titulo: publicacao
-        ? 'Publicado institucionalmente'
-        : revisao.decisao === 'aprovado'
+        ? 'Aval final do coordenador · publicado'
+        : coordenacao
+          ? 'Coordenador devolveu à supervisão'
+          : revisao.decisao === 'aprovado'
           ? 'Homologado pela supervisão'
           : revisao.decisao === 'ajustes_solicitados'
             ? 'Correção solicitada'

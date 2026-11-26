@@ -168,6 +168,7 @@ export interface ApiProcesso {
   revisoes_governanca?: Array<{
     id: string
     revisor_nome: string
+    etapa?: 'supervisao' | 'coordenacao'
     decisao: 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
     parecer: string
     criado_em: string

@@ -10,6 +10,7 @@ const ESTILO: Record<ItemTimeline['tipo'], { icone: typeof Send; classe: string 
   correcao: { icone: RotateCcw, classe: 'text-fx-alerta border-fx-alerta/40 bg-fx-alerta/10' },
   aprovacao: { icone: CheckCircle2, classe: 'text-fx-sucesso border-fx-sucesso/40 bg-fx-sucesso/10' },
   publicacao: { icone: ShieldCheck, classe: 'text-fx-marinho border-fx-marinho/30 bg-fx-nevoa' },
+  devolucao_coordenacao: { icone: Undo2, classe: 'text-fx-alerta border-fx-alerta/40 bg-fx-alerta/10' },
 }
 
 function formatarData(valor: string): string {

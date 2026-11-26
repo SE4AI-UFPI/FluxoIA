@@ -33,7 +33,7 @@ class UserSerializer(serializers.ModelSerializer):
             'exportar_dados', 'gerenciar_indicadores', 'acessar_dashboard',
             'distribuir_tarefas', 'gerenciar_equipes', 'consultar_processos',
             'responder_entrevistas_guiadas', 'gerar_editar_diagramas_institucionais',
-            'exportar_artefatos',
+            'exportar_artefatos', 'publicar_processos',
         },
         PapelUsuario.OPERACIONAL: {
             'executar_atividades', 'atualizar_informacoes', 'consultar_processos',
@@ -318,11 +318,12 @@ class RevisaoGovernancaSerializer(serializers.ModelSerializer):
             'versao_bpmn',
             'revisor',
             'revisor_nome',
+            'etapa',
             'decisao',
             'parecer',
             'criado_em',
         ]
-        read_only_fields = ['id', 'revisor', 'revisor_nome', 'criado_em']
+        read_only_fields = ['id', 'revisor', 'revisor_nome', 'etapa', 'criado_em']
 
 
 class ExclusaoProcessoSerializer(serializers.ModelSerializer):
@@ -347,6 +348,7 @@ class ExclusaoProcessoSerializer(serializers.ModelSerializer):
 class ProcessoSerializer(serializers.ModelSerializer):
     criado_por_nome = serializers.CharField(source='criado_por.nome', read_only=True, default='')
     aprovado_por_nome = serializers.CharField(source='aprovado_por.nome', read_only=True, default='')
+    publicado_por_nome = serializers.CharField(source='publicado_por.nome', read_only=True, default='')
     bpmn_xml_atual = serializers.SerializerMethodField()
     entrevista = EntrevistaProcessoSerializer(required=False)
     versoes_bpmn = VersaoFluxoBPMNSerializer(many=True, read_only=True)
@@ -372,8 +374,11 @@ class ProcessoSerializer(serializers.ModelSerializer):
             'criado_por_nome',
             'aprovado_por',
             'aprovado_por_nome',
+            'publicado_por',
+            'publicado_por_nome',
             'submetido_em',
             'aprovado_em',
+            'publicado_em',
             'criado_em',
             'atualizado_em',
             'bpmn_xml_atual',
@@ -390,8 +395,11 @@ class ProcessoSerializer(serializers.ModelSerializer):
             'criado_por_nome',
             'aprovado_por',
             'aprovado_por_nome',
+            'publicado_por',
+            'publicado_por_nome',
             'submetido_em',
             'aprovado_em',
+            'publicado_em',
             'criado_em',
             'atualizado_em',
             'bpmn_xml_atual',

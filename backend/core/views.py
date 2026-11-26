@@ -207,12 +207,24 @@ class ProcessoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='publicar')
     def publicar(self, request, pk=None):
-        """POST /api/processos/{id}/publicar/ -> encaminha processo homologado para publicação."""
+        """POST /api/processos/{id}/publicar/ -> aval final do coordenador; publica o processo homologado."""
         processo = self.get_object()
         process_service.publicar_processo(
             processo=processo,
             usuario=request.user,
             parecer=(request.data.get('parecer') or '').strip(),
+        )
+        processo_atualizado = self.get_queryset().get(pk=processo.pk)
+        return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='devolver-supervisao')
+    def devolver_supervisao(self, request, pk=None):
+        """POST /api/processos/{id}/devolver-supervisao/ -> coordenador recusa o aval e devolve ao supervisor."""
+        processo = self.get_object()
+        process_service.devolver_para_supervisao(
+            processo=processo,
+            usuario=request.user,
+            parecer=request.data.get('parecer') or '',
         )
         processo_atualizado = self.get_queryset().get(pk=processo.pk)
         return Response(self.get_serializer(processo_atualizado).data, status=status.HTTP_200_OK)

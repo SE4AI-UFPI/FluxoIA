@@ -11,10 +11,14 @@ export type ProcessoStatusApi =
 
 export type DecisaoRevisao = 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
 
+/** supervisao = homologação técnica; coordenacao = aval final que publica. */
+export type EtapaGovernanca = 'supervisao' | 'coordenacao'
+
 export interface RevisaoGovernanca {
   id: string
   versao_bpmn: string | null
   revisor_nome: string
+  etapa: EtapaGovernanca
   decisao: DecisaoRevisao
   parecer: string
   criado_em: string
@@ -45,6 +49,8 @@ export interface ProcessoSupervisao {
   criado_em: string
   criado_por_nome: string
   aprovado_por_nome: string
+  publicado_por_nome: string
+  publicado_em: string | null
   bpmn_xml_atual: string | null
   revisoes_governanca: RevisaoGovernanca[]
   versoes_bpmn: VersaoBpmnResumo[]
@@ -73,7 +79,7 @@ export interface ResumoSetor {
 
 export interface ItemTimeline {
   id: string
-  tipo: 'envio' | 'correcao' | 'reenvio' | 'aprovacao' | 'publicacao'
+  tipo: 'envio' | 'correcao' | 'reenvio' | 'aprovacao' | 'publicacao' | 'devolucao_coordenacao'
   titulo: string
   descricao: string
   versao: string

@@ -21,6 +21,12 @@ const SupervisorValidationPage = lazy(() =>
   })),
 )
 
+const FinalApprovalPage = lazy(() =>
+  import('@/features/supervisor/pages/FinalApprovalPage').then((module) => ({
+    default: module.FinalApprovalPage,
+  })),
+)
+
 const SupervisorReportsPage = lazy(() =>
   import('@/features/supervisor/pages/ReportsPage').then((module) => ({
     default: module.ReportsPage,
@@ -51,6 +57,22 @@ function GovernanceRoute() {
       ) : (
         <Suspense fallback={<Fallback mensagem="Carregando validação..." />}>
           <SupervisorValidationPage />
+        </Suspense>
+      )}
+    </ProtectedRoute>
+  )
+}
+
+function FinalApprovalRoute() {
+  const { user } = useAuth()
+
+  return (
+    <ProtectedRoute>
+      {user && !canAccessMenu(user, 'governance:publish') ? (
+        <Navigate to="/" replace />
+      ) : (
+        <Suspense fallback={<Fallback mensagem="Carregando aval final..." />}>
+          <FinalApprovalPage />
         </Suspense>
       )}
     </ProtectedRoute>
@@ -193,6 +215,7 @@ export function App() {
           <Route path="/mapear-processo" element={<ProcessMappingRoute />} />
           <Route path="/processos/novo" element={<ProcessMappingRoute />} />
           <Route path="/governanca" element={<GovernanceRoute />} />
+          <Route path="/publicacao" element={<FinalApprovalRoute />} />
           <Route path="/indicadores" element={<ReportsRoute permissao="indicators:view" />} />
           <Route path="/relatorios" element={<ReportsRoute permissao="reports:view" />} />
           <Route path="/bpmn" element={<BpmnViewerRoute />} />

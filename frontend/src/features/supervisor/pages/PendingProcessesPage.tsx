@@ -1,15 +1,16 @@
 import * as React from 'react'
-import { Inbox, Search, Send, ShieldCheck } from 'lucide-react'
+import { Inbox, Search, Send, Undo2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import type { ProcessoSupervisao } from '../types/supervisor.types'
+import type { ProcessoStatusApi, ProcessoSupervisao } from '../types/supervisor.types'
+import { devolucaoPendenteDoCoordenador } from '../services/final-approval.service'
 import { SLAIndicator } from '../components/SLAIndicator'
 
 const STATUS_BADGE: Record<string, { label: string; variant: 'default' | 'secondary' | 'success' | 'warning' | 'outline' }> = {
   aguardando_validacao: { label: 'Aguardando parecer', variant: 'warning' },
-  aprovado: { label: 'Homologado', variant: 'success' },
+  aprovado: { label: 'Aguardando aval do coordenador', variant: 'success' },
   publicado: { label: 'Publicado', variant: 'default' },
   ajustes_solicitados: { label: 'Em correção', variant: 'secondary' },
   rejeitado: { label: 'Devolvido', variant: 'outline' },
@@ -29,16 +30,15 @@ function formatarData(valor: string | null): string {
 export function PendingProcessesPage({
   processos,
   onAnalisar,
-  onPublicar,
-  publicando = null,
+  statusAcionavel = 'aguardando_validacao',
   carregando = false,
   titulo = 'Processos Pendentes',
   descricao = 'Processos enviados pelos colaboradores aguardando análise da supervisão.',
 }: {
   processos: ProcessoSupervisao[]
   onAnalisar: (processo: ProcessoSupervisao) => void
-  onPublicar?: (processo: ProcessoSupervisao) => void
-  publicando?: string | null
+  /** Status em que o usuário atual tem uma decisão a tomar (mostra "Analisar"). */
+  statusAcionavel?: ProcessoStatusApi
   carregando?: boolean
   titulo?: string
   descricao?: string
@@ -134,7 +134,15 @@ export function PendingProcessesPage({
                         <td className="py-2.5 pr-3 text-fx-grafite">{processo.criado_por_nome}</td>
                         <td className="py-2.5 pr-3 text-fx-cinza">{formatarData(processo.submetido_em)}</td>
                         <td className="py-2.5 pr-3">
-                          <Badge variant={status.variant}>{status.label}</Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={status.variant}>{status.label}</Badge>
+                            {processo.status === 'aguardando_validacao' &&
+                              devolucaoPendenteDoCoordenador(processo) && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-fx-alerta">
+                                  <Undo2 className="h-3 w-3" /> Devolvido pelo coordenador
+                                </span>
+                              )}
+                          </div>
                         </td>
                         <td className="py-2.5 pr-3">
                           {processo.status === 'aguardando_validacao' ? (
@@ -152,18 +160,8 @@ export function PendingProcessesPage({
                               onClick={() => onAnalisar(processo)}
                             >
                               <Send className="mr-1 h-3.5 w-3.5" />
-                              {processo.status === 'aguardando_validacao' ? 'Analisar' : 'Detalhes'}
+                              {processo.status === statusAcionavel ? 'Analisar' : 'Detalhes'}
                             </Button>
-                            {onPublicar && processo.status === 'aprovado' && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={publicando === processo.id}
-                                onClick={() => onPublicar(processo)}
-                              >
-                                <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Publicar
-                              </Button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -193,7 +191,7 @@ export function PendingProcessesPage({
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] text-fx-cinza">{formatarData(processo.submetido_em)}</span>
                       <Button type="button" size="sm" variant="outline" onClick={() => onAnalisar(processo)}>
-                        {processo.status === 'aguardando_validacao' ? 'Analisar' : 'Detalhes'}
+                        {processo.status === statusAcionavel ? 'Analisar' : 'Detalhes'}
                       </Button>
                     </div>
                   </li>

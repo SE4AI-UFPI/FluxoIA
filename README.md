@@ -16,6 +16,7 @@ Nas secretarias, o mapeamento de processos é manual, leva meses e depende de po
 - **Gestão de usuários:** cadastro administrativo com perfil, setor e permissões complementares.
 - **Dashboard operacional:** resumo de processos e lista com busca e filtros por setor e status.
 - **Mapeamento de processos:** assistente em quatro etapas para identificar o processo, conduzir a entrevista, gerar o BPMN e registrar a avaliação.
+- **Governança em duas etapas:** o supervisor homologa o mapeamento (ou pede correção ao autor); em seguida, o coordenador dá o aval final, que publica o processo e libera o PDF oficial, ou o devolve ao supervisor com justificativa.
 
 ## Fluxo de Mapeamento
 

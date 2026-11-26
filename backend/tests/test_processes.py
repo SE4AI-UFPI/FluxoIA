@@ -2,6 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 from core.models import (
     DecisaoGovernanca,
+    EtapaGovernanca,
     ExclusaoProcesso,
     NivelEdicaoFluxo,
     OrigemVersaoBPMN,
@@ -735,8 +736,8 @@ class TestAjusteLayoutBPMN:
 
 
 @pytest.mark.django_db
-class TestPublicacaoSupervisor:
-    """Publicação institucional é a última etapa da supervisão."""
+class TestAvalFinalCoordenador:
+    """O supervisor homologa; o coordenador dá o aval final que publica o processo."""
 
     def setup_method(self):
         self.client = APIClient()
@@ -746,6 +747,21 @@ class TestPublicacaoSupervisor:
             password='Password@123',
             papel=PapelUsuario.SUPERVISOR,
             setor='SDU: Protocolo',
+        )
+        self.coordenador = User.objects.create_user(
+            email='coordenador.pub@sdu.pi.gov.br',
+            nome='Coordenador Publicação',
+            password='Password@123',
+            papel=PapelUsuario.COORDENADOR,
+            setor='SDU: Coordenação',
+            setores_vinculados=['SDU: Protocolo'],
+        )
+        self.coordenador_outro_setor = User.objects.create_user(
+            email='coordenador.outro@sdu.pi.gov.br',
+            nome='Coordenador de Outro Setor',
+            password='Password@123',
+            papel=PapelUsuario.COORDENADOR,
+            setor='SDU: Fiscalização',
         )
         self.operacional = User.objects.create_user(
             email='operacional.pub@sdu.pi.gov.br',
@@ -765,40 +781,140 @@ class TestPublicacaoSupervisor:
             aprovado_por=self.supervisor,
         )
 
-    def test_supervisor_publishes_approved_process(self):
-        self.client.force_authenticate(user=self.supervisor)
+    def _publicar(self, usuario, payload=None):
+        self.client.force_authenticate(user=usuario)
+        return self.client.post(
+            f'/api/processos/{self.processo.id}/publicar/', payload or {}, format='json',
+        )
 
-        res = self.client.post(
-            f'/api/processos/{self.processo.id}/publicar/',
-            {'parecer': 'Homologação concluída.'},
+    def _devolver(self, usuario, parecer):
+        self.client.force_authenticate(user=usuario)
+        return self.client.post(
+            f'/api/processos/{self.processo.id}/devolver-supervisao/',
+            {'parecer': parecer},
             format='json',
         )
 
+    def test_coordenador_publishes_homologated_process(self):
+        res = self._publicar(self.coordenador, {'parecer': 'Aval final concedido.'})
+
         assert res.status_code == 200, res.data
         assert res.data['status'] == StatusProcesso.PUBLICADO
+        assert res.data['publicado_por_nome'] == self.coordenador.nome
+        assert res.data['aprovado_por_nome'] == self.supervisor.nome
 
         self.processo.refresh_from_db()
         assert self.processo.status == StatusProcesso.PUBLICADO
+        assert self.processo.publicado_por == self.coordenador
+        assert self.processo.publicado_em is not None
 
         revisao = self.processo.revisoes_governanca.first()
-        assert revisao.revisor == self.supervisor
-        assert revisao.parecer.startswith('[Publicação institucional]')
+        assert revisao.revisor == self.coordenador
+        assert revisao.etapa == EtapaGovernanca.COORDENACAO
+        assert revisao.decisao == DecisaoGovernanca.APROVADO
+        assert revisao.parecer == 'Aval final concedido.'
 
-    def test_cannot_publish_process_not_approved(self):
+    def test_supervisor_cannot_publish(self):
+        res = self._publicar(self.supervisor)
+
+        assert res.status_code == 403
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.APROVADO
+
+    def test_operacional_cannot_publish(self):
+        res = self._publicar(self.operacional)
+
+        assert res.status_code == 403
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.APROVADO
+
+    def test_coordenador_cannot_act_outside_linked_sectors(self):
+        # Fora do escopo o processo nem aparece na listagem (404).
+        assert self._publicar(self.coordenador_outro_setor).status_code in (403, 404)
+        assert self._devolver(
+            self.coordenador_outro_setor, 'Devolução fora do escopo do coordenador.',
+        ).status_code in (403, 404)
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.APROVADO
+
+    def test_cannot_publish_process_not_homologated(self):
         self.processo.status = StatusProcesso.AGUARDANDO_VALIDACAO
         self.processo.save(update_fields=['status'])
 
-        self.client.force_authenticate(user=self.supervisor)
-        res = self.client.post(f'/api/processos/{self.processo.id}/publicar/', {}, format='json')
+        res = self._publicar(self.coordenador)
 
         assert res.status_code == 400
         self.processo.refresh_from_db()
         assert self.processo.status == StatusProcesso.AGUARDANDO_VALIDACAO
 
-    def test_operacional_cannot_publish(self):
-        self.client.force_authenticate(user=self.operacional)
-        res = self.client.post(f'/api/processos/{self.processo.id}/publicar/', {}, format='json')
+    def test_coordenador_cannot_do_supervisor_review(self):
+        self.processo.status = StatusProcesso.AGUARDANDO_VALIDACAO
+        self.processo.save(update_fields=['status'])
+        self.client.force_authenticate(user=self.coordenador)
+
+        res = self.client.post(
+            f'/api/processos/{self.processo.id}/revisar/',
+            {'decisao': DecisaoGovernanca.APROVADO, 'parecer': 'Tentativa indevida.'},
+            format='json',
+        )
+
+        assert res.status_code == 403
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.AGUARDANDO_VALIDACAO
+
+    def test_coordenador_returns_process_to_supervisor(self):
+        parecer = 'Rever a raia de fiscalização antes da publicação.'
+        res = self._devolver(self.coordenador, parecer)
+
+        assert res.status_code == 200, res.data
+        assert res.data['status'] == StatusProcesso.AGUARDANDO_VALIDACAO
+
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.AGUARDANDO_VALIDACAO
+        assert self.processo.aprovado_por is None
+        assert self.processo.aprovado_em is None
+        assert self.processo.publicado_por is None
+
+        revisao = self.processo.revisoes_governanca.first()
+        assert revisao.etapa == EtapaGovernanca.COORDENACAO
+        assert revisao.decisao == DecisaoGovernanca.AJUSTES_SOLICITADOS
+        assert revisao.parecer == parecer
+
+        # O supervisor volta a analisar e pode homologar de novo.
+        self.client.force_authenticate(user=self.supervisor)
+        rehomologado = self.client.post(
+            f'/api/processos/{self.processo.id}/revisar/',
+            {'decisao': DecisaoGovernanca.APROVADO, 'parecer': 'Raia ajustada.'},
+            format='json',
+        )
+        assert rehomologado.status_code == 200, rehomologado.data
+        assert rehomologado.data['status'] == StatusProcesso.APROVADO
+        assert rehomologado.data['revisoes_governanca'][0]['etapa'] == EtapaGovernanca.SUPERVISAO
+
+        assert self._publicar(self.coordenador).data['status'] == StatusProcesso.PUBLICADO
+
+    def test_return_requires_justification(self):
+        res = self._devolver(self.coordenador, 'Curto')
+
+        assert res.status_code == 400
+        assert 'parecer' in res.data
+        self.processo.refresh_from_db()
+        assert self.processo.status == StatusProcesso.APROVADO
+
+    def test_supervisor_cannot_return_to_supervision(self):
+        res = self._devolver(self.supervisor, 'Supervisor tentando a etapa final.')
 
         assert res.status_code == 403
         self.processo.refresh_from_db()
         assert self.processo.status == StatusProcesso.APROVADO
+
+    def test_coordenador_lists_processes_of_linked_sectors(self):
+        self.client.force_authenticate(user=self.coordenador)
+        res = self.client.get('/api/processos/?status=aprovado')
+        ids = [item['id'] for item in (res.data['results'] if isinstance(res.data, dict) else res.data)]
+        assert str(self.processo.id) in ids
+
+        self.client.force_authenticate(user=self.coordenador_outro_setor)
+        res = self.client.get('/api/processos/?status=aprovado')
+        ids = [item['id'] for item in (res.data['results'] if isinstance(res.data, dict) else res.data)]
+        assert str(self.processo.id) not in ids

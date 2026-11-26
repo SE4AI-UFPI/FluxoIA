@@ -93,6 +93,9 @@ def test_mapping_correction_and_publication_cycle(monkeypatch, decision):
     process.refresh_from_db()
     assert process.atualizado_em == before
     client.force_authenticate(supervisor)
+    assert client.post(f'{url}publicar/', {}, format='json').status_code == 403
+    coordinator = User.objects.create_user(email='coordinator@example.test', nome='Coordenador', setor='Protocolo', papel=PapelUsuario.COORDENADOR)
+    client.force_authenticate(coordinator)
     published = client.post(f'{url}publicar/', {}, format='json')
     assert published.status_code == 200, published.data
     assert published.data['status'] == StatusProcesso.PUBLICADO

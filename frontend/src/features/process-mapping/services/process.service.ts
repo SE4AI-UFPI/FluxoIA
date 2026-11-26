@@ -231,7 +231,11 @@ export function mapApiProcessoToWizardState(
         user: revisao.revisor_nome || 'Supervisão',
         version: api.versao_atual || INITIAL_PROCESS_VERSION,
         reason:
-          revisao.decisao === 'aprovado'
+          revisao.etapa === 'coordenacao'
+            ? revisao.decisao === 'aprovado'
+              ? `Aval final do coordenador (publicado): ${revisao.parecer}`
+              : `Coordenador devolveu à supervisão: ${revisao.parecer}`
+            : revisao.decisao === 'aprovado'
             ? `Homologado pela supervisão: ${revisao.parecer}`
             : revisao.decisao === 'ajustes_solicitados'
               ? `Correção solicitada: ${revisao.parecer}`
