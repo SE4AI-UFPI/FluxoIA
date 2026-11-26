@@ -58,7 +58,7 @@ def test_mapping_correction_and_publication_cycle(monkeypatch, decision):
     reviewed = client.post(f'{url}revisar/', {'decisao': decision,
         'parecer': '[Não conformidades: Documentação] Detalhar a conferência.'}, format='json')
     assert reviewed.status_code == 200, reviewed.data
-    assert 'entrevista' not in reviewed.data
+    assert reviewed.data['entrevista']['respostas']['trigger'] == answers['trigger']
     assert reviewed.data['status'] == (StatusProcesso.RASCUNHO if decision == DecisaoGovernanca.REJEITADO else StatusProcesso.AJUSTES_SOLICITADOS)
 
     client.force_authenticate(author)
@@ -99,4 +99,4 @@ def test_mapping_correction_and_publication_cycle(monkeypatch, decision):
     published = client.post(f'{url}publicar/', {}, format='json')
     assert published.status_code == 200, published.data
     assert published.data['status'] == StatusProcesso.PUBLICADO
-    assert 'entrevista' not in published.data
+    assert published.data['entrevista']['respostas']['activities'].startswith('Conferir formulário')

@@ -413,13 +413,22 @@ class ProcessoSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get('request')
         usuario = getattr(request, 'user', None)
-        if not (
-            usuario is not None
-            and usuario.is_authenticated
-            and usuario.pk == instance.criado_por_id
-        ):
+        if not self._pode_ver_entrevista(usuario, instance):
             data.pop('entrevista', None)
         return data
+
+    @staticmethod
+    def _pode_ver_entrevista(usuario, instance: Processo) -> bool:
+        """A entrevista é do autor; supervisor e coordenador também a consultam na governança.
+
+        O escopo de setores de ambos já é aplicado na listagem/detalhe.
+        """
+        if usuario is None or not usuario.is_authenticated:
+            return False
+        return usuario.pk == instance.criado_por_id or usuario.papel in (
+            PapelUsuario.SUPERVISOR,
+            PapelUsuario.COORDENADOR,
+        )
 
     def get_bpmn_xml_atual(self, obj: Processo) -> str | None:
         versoes = list(obj.versoes_bpmn.all())

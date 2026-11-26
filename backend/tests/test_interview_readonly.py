@@ -65,7 +65,31 @@ def test_author_can_read_without_changing_process(scenario, status):
             process.entrevista.atualizado_em, process.entrevista.respostas) == before
 
 
-@pytest.mark.parametrize('role', ['colleague', 'coordinator', 'supervisor', 'admin'])
+@pytest.mark.parametrize('role', ['supervisor', 'coordinator'])
+def test_governance_roles_receive_interview_in_detail_and_list(scenario, role):
+    client, users, process = scenario
+    client.force_authenticate(users[role])
+    detail = client.get(f'/api/processos/{process.pk}/')
+    assert detail.status_code == 200
+    assert detail.data['entrevista']['respostas'] == process.entrevista.respostas
+    listing = client.get('/api/processos/')
+    rows = listing.data['results'] if isinstance(listing.data, dict) else listing.data
+    row = next(row for row in rows if str(row['id']) == str(process.pk))
+    assert row['entrevista']['respostas'] == process.entrevista.respostas
+
+
+@pytest.mark.parametrize('papel', [PapelUsuario.SUPERVISOR, PapelUsuario.COORDENADOR])
+def test_governance_roles_outside_sector_cannot_read_interview(scenario, papel):
+    client, _, process = scenario
+    outsider = User.objects.create_user(
+        email=f'{papel}.outro@example.test', nome=f'{papel} outro', papel=papel,
+        secretaria='SECT', setor='Fiscalização',
+    )
+    client.force_authenticate(outsider)
+    assert client.get(f'/api/processos/{process.pk}/').status_code == 404
+
+
+@pytest.mark.parametrize('role', ['colleague', 'admin'])
 def test_other_viewers_do_not_receive_interview_in_detail_or_list(scenario, role):
     client, users, process = scenario
     client.force_authenticate(users[role])
@@ -124,18 +148,19 @@ def test_locked_process_rejects_writes(scenario, status, method, path, payload):
     assert process.entrevista.atualizado_em == interview_updated
 
 
-def test_review_and_publication_responses_hide_interview(scenario):
+def test_review_and_publication_responses_show_interview_to_governance(scenario):
     client, users, process = scenario
     client.force_authenticate(users['supervisor'])
     review = client.post(f'/api/processos/{process.pk}/revisar/', {
         'decisao': DecisaoGovernanca.APROVADO, 'parecer': 'Fluxo conferido.',
     }, format='json')
     assert review.status_code == 200, review.data
-    assert 'entrevista' not in review.data
+    assert 'entrevista' in review.data
     client.force_authenticate(users['coordinator'])
     publication = client.post(f'/api/processos/{process.pk}/publicar/', {}, format='json')
     assert publication.status_code == 200, publication.data
-    assert 'entrevista' not in publication.data
+    # O coordenador consulta a entrevista para dar o aval final.
+    assert 'entrevista' in publication.data
 
 
 def test_custom_action_preserves_interview_for_author(scenario):
