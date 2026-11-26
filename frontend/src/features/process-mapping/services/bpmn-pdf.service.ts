@@ -1,14 +1,14 @@
 import { GState, jsPDF } from 'jspdf'
 import type { ApiProcesso, ProcessStatus } from '../types/process.types'
 
-const STATUS_LABELS: Record<ApiProcesso['status'], ProcessStatus> = {
+const STATUS_LABELS: Record<ApiProcesso['status'], string> = {
   rascunho: 'Rascunho',
   em_entrevista: 'Em Entrevista',
   em_modelagem: 'Em Modelagem BPMN',
   em_avaliacao: 'Em Avaliação',
   aguardando_validacao: 'Aguardando Validação do Gestor',
   ajustes_solicitados: 'Ajustes Solicitados',
-  aprovado: 'Aprovado',
+  aprovado: 'Homologado pela Supervisão',
   publicado: 'Publicado',
   excluido: 'Excluído',
 }
@@ -27,8 +27,12 @@ interface BpmnPdfOptions {
 export function createBpmnPdf({
   diagramImage, diagramWidth, diagramHeight, title, code, status, exportedAt = new Date(),
 }: BpmnPdfOptions): jsPDF {
-  const statusLabel = STATUS_LABELS[status as ApiProcesso['status']] ?? status
-  const approved = statusLabel === 'Aprovado' || statusLabel === 'Publicado'
+  const statusLabel = status === 'Aprovado'
+    ? STATUS_LABELS.aprovado
+    : STATUS_LABELS[status as ApiProcesso['status']] ?? status
+  // Só a publicação (aval final do coordenador) gera o PDF oficial, sem marca d'água.
+  const approved = statusLabel === 'Publicado'
+  const homologated = statusLabel === STATUS_LABELS.aprovado
   const processTitle = title.trim() || 'Mapeamento de processo'
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
   pdf.setProperties({ title: processTitle, subject: `Status: ${statusLabel}`, creator: 'FluxoIA' })
@@ -53,7 +57,13 @@ export function createBpmnPdf({
   pdf.setFont('helvetica', 'bold')
   pdf.text(`Status: ${statusLabel}`, margin, detailsY + 16)
   if (!approved) {
-    pdf.text('NÃO APROVADO - Este mapeamento ainda não foi aprovado.', margin, detailsY + 32)
+    pdf.text(
+      homologated
+        ? 'NÃO APROVADO - Homologado pela supervisão; aguarda o aval final do coordenador.'
+        : 'NÃO APROVADO - Este mapeamento ainda não foi aprovado.',
+      margin,
+      detailsY + 32,
+    )
   }
 
   const diagramTop = detailsY + (approved ? 32 : 48)

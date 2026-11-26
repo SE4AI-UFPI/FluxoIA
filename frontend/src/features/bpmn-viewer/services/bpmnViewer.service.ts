@@ -42,6 +42,7 @@ interface ApiProcesso {
   revisoes_governanca?: Array<{
     id: string
     revisor_nome: string
+    etapa?: 'supervisao' | 'coordenacao'
     decisao: 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
     parecer: string
     criado_em: string
@@ -96,6 +97,7 @@ function mapearRevisoes(api: ApiProcesso): RevisaoBiblioteca[] {
   return (api.revisoes_governanca ?? []).map((revisao) => ({
     id: revisao.id,
     revisor: revisao.revisor_nome || 'Supervisão',
+    etapa: revisao.etapa ?? 'supervisao',
     decisao: revisao.decisao,
     parecer: revisao.parecer,
     criadoEm: revisao.criado_em,

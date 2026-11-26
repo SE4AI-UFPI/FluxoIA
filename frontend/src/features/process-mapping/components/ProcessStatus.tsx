@@ -13,6 +13,10 @@ const STATUS_VARIANT: Record<ProcessStatusValue, 'default' | 'secondary' | 'succ
   Excluído: 'warning',
 }
 
+const STATUS_LABEL: Partial<Record<ProcessStatusValue, string>> = {
+  Aprovado: 'Homologado · aguardando coordenador',
+}
+
 export function ProcessStatus({ status }: { status: ProcessStatusValue }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
+  return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status] ?? status}</Badge>
 }

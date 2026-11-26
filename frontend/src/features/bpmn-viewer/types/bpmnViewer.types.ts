@@ -16,6 +16,7 @@ export interface VersaoBiblioteca {
 export interface RevisaoBiblioteca {
   id: string
   revisor: string
+  etapa: 'supervisao' | 'coordenacao'
   decisao: 'aprovado' | 'ajustes_solicitados' | 'rejeitado'
   parecer: string
   criadoEm: string
@@ -82,7 +83,7 @@ export const STATUS_BIBLIOTECA: Array<{
   variante: 'default' | 'secondary' | 'success' | 'warning' | 'outline'
 }> = [
   { valor: 'publicado', rotulo: 'Publicado', variante: 'default' },
-  { valor: 'aprovado', rotulo: 'Homologado', variante: 'success' },
+  { valor: 'aprovado', rotulo: 'Homologado · aguardando coordenador', variante: 'success' },
   { valor: 'aguardando_validacao', rotulo: 'Aguardando Validação', variante: 'warning' },
   { valor: 'ajustes_solicitados', rotulo: 'Correção Solicitada', variante: 'secondary' },
 ]

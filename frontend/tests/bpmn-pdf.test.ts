@@ -9,8 +9,8 @@ const options = {
   exportedAt: new Date('2026-11-09T12:00:00Z'),
 }
 
-test('rascunhos, pendentes e devolvidos são identificados como não aprovados', () => {
-  for (const status of ['Rascunho', 'Em Entrevista', 'Em Modelagem BPMN', 'Em Avaliação', 'Aguardando Validação do Gestor', 'Ajustes Solicitados', 'Excluído', 'rascunho', 'em_entrevista', 'em_modelagem', 'em_avaliacao', 'aguardando_validacao', 'ajustes_solicitados', 'excluido'] as const) {
+test('rascunhos, pendentes, devolvidos e homologados sem aval são identificados como não aprovados', () => {
+  for (const status of ['Rascunho', 'Em Entrevista', 'Em Modelagem BPMN', 'Em Avaliação', 'Aguardando Validação do Gestor', 'Ajustes Solicitados', 'Aprovado', 'Excluído', 'rascunho', 'em_entrevista', 'em_modelagem', 'em_avaliacao', 'aguardando_validacao', 'ajustes_solicitados', 'aprovado', 'excluido'] as const) {
     const pdf = createBpmnPdf({ ...options, status })
     const contents = pdf.output()
     assert.match(contents, /NÃO APROVADO/, status)
@@ -20,11 +20,19 @@ test('rascunhos, pendentes e devolvidos são identificados como não aprovados',
   }
 })
 
-test('aprovados e publicados não recebem marca de não aprovado', () => {
-  for (const status of ['Aprovado', 'Publicado', 'aprovado', 'publicado'] as const) {
+test('só publicados (aval final do coordenador) geram o PDF oficial', () => {
+  for (const status of ['Publicado', 'publicado'] as const) {
     const contents = createBpmnPdf({ ...options, status }).output()
     assert.doesNotMatch(contents, /NÃO APROVADO/, status)
-    assert.match(contents, /Status: (Aprovado|Publicado)/)
+    assert.match(contents, /Status: Publicado/)
+  }
+})
+
+test('homologado pela supervisão indica que aguarda o coordenador', () => {
+  for (const status of ['Aprovado', 'aprovado'] as const) {
+    const contents = createBpmnPdf({ ...options, status }).output()
+    assert.match(contents, /Status: Homologado pela Supervis/, status)
+    assert.match(contents, /aval final do coordenador/, status)
   }
 })
 
