@@ -198,6 +198,7 @@ export function mapApiProcessoToWizardState(
     id: api.id,
     backendId: api.id,
     ownerId: api.criado_por || fallbackUserId,
+    submittedBy: api.criado_por_nome || undefined,
     info: {
       name: api.nome || '',
       sector: api.setor || defaultSector,

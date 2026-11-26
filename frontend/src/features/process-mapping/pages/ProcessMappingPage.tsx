@@ -418,8 +418,8 @@ export function ProcessMappingPage() {
             onNext={continueToInterview}
           />
         )}
-        {wizard.viewedStep === 2 && (process.ownerId !== user.id ? (
-          <p className="rounded-sm border border-fx-linha bg-fx-papel p-5 text-sm text-fx-grafite">A entrevista só pode ser consultada pelo autor do mapeamento.</p>
+        {wizard.viewedStep === 2 && (process.ownerId !== user.id && user.papel !== 'supervisor' && user.papel !== 'coordenador' ? (
+          <p className="rounded-sm border border-fx-linha bg-fx-papel p-5 text-sm text-fx-grafite">A entrevista só pode ser consultada pelo autor do mapeamento, pelo supervisor e pelo coordenador.</p>
         ) : (
           <InterviewStep
             readOnly={isLocked}
@@ -430,7 +430,7 @@ export function ProcessMappingPage() {
               status: process.status,
               version: process.version,
               updatedAt: process.updatedAt,
-              authorName: user.nome,
+              authorName: process.submittedBy || user.nome,
             }}
             processContext={{
               id: process.id,
