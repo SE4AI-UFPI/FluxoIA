@@ -1,4 +1,3 @@
-import { apiClient } from '@/services/apiClient'
 import type {
   IndicadoresSupervisor,
   ItemTimeline,
@@ -117,24 +116,29 @@ export function montarTimeline(processo: ProcessoSupervisao): ItemTimeline[] {
   }
 
   for (const revisao of processo.revisoes_governanca ?? []) {
-    const tipo =
-      revisao.decisao === 'aprovado'
-        ? revisao.parecer.startsWith('[Publicação institucional]')
-          ? 'publicacao'
-          : 'aprovacao'
+    const coordenacao = revisao.etapa === 'coordenacao'
+    const tipo: ItemTimeline['tipo'] = coordenacao
+      ? revisao.decisao === 'aprovado'
+        ? 'publicacao'
+        : 'devolucao_coordenacao'
+      : revisao.decisao === 'aprovado'
+        ? 'aprovacao'
         : 'correcao'
+
+    const TITULOS: Record<ItemTimeline['tipo'], string> = {
+      publicacao: 'Aval final do coordenador · publicado',
+      devolucao_coordenacao: 'Coordenador devolveu à supervisão',
+      aprovacao: 'Homologado pela supervisão',
+      correcao:
+        revisao.decisao === 'ajustes_solicitados' ? 'Correção solicitada' : 'Devolvido para refazer',
+      envio: '',
+      reenvio: '',
+    }
 
     itens.push({
       id: `revisao-${revisao.id}`,
       tipo,
-      titulo:
-        tipo === 'publicacao'
-          ? 'Publicação institucional'
-          : tipo === 'aprovacao'
-            ? 'Processo homologado'
-            : revisao.decisao === 'ajustes_solicitados'
-              ? 'Correção solicitada'
-              : 'Devolvido para refazer',
+      titulo: TITULOS[tipo],
       descricao: revisao.parecer || 'Sem parecer registrado',
       versao: processo.versao_atual,
       autor: revisao.revisor_nome,
@@ -155,12 +159,4 @@ export function montarTimeline(processo: ProcessoSupervisao): ItemTimeline[] {
   }
 
   return itens.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
-}
-
-/** Encaminha um processo homologado para a publicação institucional. */
-export async function publicarProcesso(
-  processoId: string,
-  parecer: string,
-): Promise<ProcessoSupervisao> {
-  return apiClient.post<ProcessoSupervisao>(`/api/processos/${processoId}/publicar/`, { parecer })
 }

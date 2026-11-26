@@ -49,7 +49,8 @@ export function TechnicalOpinion({
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Parecer Técnico</CardTitle>
         <p className="text-xs text-fx-cinza">
-          O parecer é registrado na auditoria do processo com autor e data/hora.
+          O parecer é registrado na auditoria com autor e data/hora. Ao homologar, o processo segue
+          para o aval final do coordenador, que o publica.
         </p>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">

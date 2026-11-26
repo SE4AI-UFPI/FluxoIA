@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AlertCircle, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, Undo2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ import {
   devolverProcesso,
   solicitarCorrecao,
 } from '../services/review.service'
-import { publicarProcesso } from '../services/homologation.service'
+import { devolucaoPendenteDoCoordenador } from '../services/final-approval.service'
 import { PendingProcessesPage } from './PendingProcessesPage'
 import type { ChecklistItem, ParecerRevisaoPayload, ProcessoSupervisao } from '../types/supervisor.types'
 
@@ -41,7 +41,6 @@ export function ValidationPage() {
   const [enviando, setEnviando] = React.useState(false)
   const [erroAcao, setErroAcao] = React.useState<string | null>(null)
   const [aviso, setAviso] = React.useState<string | null>(null)
-  const [publicando, setPublicando] = React.useState<string | null>(null)
 
   const processoId = searchParams.get('processo')
   const selecionado = React.useMemo(
@@ -94,7 +93,7 @@ export function ValidationPage() {
       }
       const mensagem =
         payload.decisao === 'aprovado'
-          ? 'Processo homologado com sucesso.'
+          ? 'Processo homologado e encaminhado ao coordenador para o aval final.'
           : payload.decisao === 'ajustes_solicitados'
             ? 'Correção solicitada ao autor do processo.'
             : 'Processo devolvido para reajuste completo.'
@@ -112,21 +111,6 @@ export function ValidationPage() {
       )
     } finally {
       setEnviando(false)
-    }
-  }
-
-  async function publicar(processo: ProcessoSupervisao) {
-    setPublicando(processo.id)
-    setErroAcao(null)
-    setAviso(null)
-    try {
-      await publicarProcesso(processo.id, 'Homologação técnica concluída; processo publicado.')
-      recarregar()
-      setAviso('Processo encaminhado para publicação institucional.')
-    } catch (causa) {
-      setErroAcao(causa instanceof Error ? causa.message : 'Não foi possível publicar o processo.')
-    } finally {
-      setPublicando(null)
     }
   }
 
@@ -235,14 +219,12 @@ export function ValidationPage() {
         <PendingProcessesPage
           processos={aba === 'pendentes' ? pendentes : finalizados}
           onAnalisar={selecionar}
-          onPublicar={aba === 'finalizados' ? publicar : undefined}
-          publicando={publicando}
           carregando={carregando}
           titulo={aba === 'pendentes' ? 'Processos Pendentes' : 'Processos Finalizados'}
           descricao={
             aba === 'pendentes'
               ? 'Processos enviados pelos colaboradores aguardando análise da supervisão.'
-              : 'Processos homologados, publicados e disponíveis para consulta.'
+              : 'Processos homologados (aguardando o aval final do coordenador) e publicados.'
           }
         />
 
@@ -262,6 +244,7 @@ export function ValidationPage() {
 
             {selecionado.status === 'aguardando_validacao' ? (
               <>
+                <DevolucaoCoordenadorAviso processo={selecionado} />
                 <ValidationChecklist estados={checklist} onAlternar={alternarItem} />
                 <TechnicalOpinion
                   parecer={parecer}
@@ -279,22 +262,27 @@ export function ValidationPage() {
                   <CardTitle className="text-base">Processo já decidido</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 pt-0 text-sm text-fx-cinza">
-                  <p>
-                    Este processo está com status <strong>{selecionado.status}</strong> e não
-                    possui pendências de parecer.
-                  </p>
-                  {selecionado.status === 'aprovado' && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={publicando === selecionado.id}
-                      onClick={() => void publicar(selecionado)}
-                    >
-                      {publicando === selecionado.id && (
-                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  {selecionado.status === 'aprovado' ? (
+                    <p>
+                      Homologado pela supervisão. Aguardando o <strong>aval final do coordenador</strong>{' '}
+                      para ser publicado. Se o coordenador discordar, o processo volta para esta fila.
+                    </p>
+                  ) : selecionado.status === 'publicado' ? (
+                    <p>
+                      Publicado
+                      {selecionado.publicado_por_nome && (
+                        <> por <strong>{selecionado.publicado_por_nome}</strong></>
                       )}
-                      Publicar processo
-                    </Button>
+                      {selecionado.publicado_em && (
+                        <> em {new Date(selecionado.publicado_em).toLocaleString('pt-BR')}</>
+                      )}
+                      .
+                    </p>
+                  ) : (
+                    <p>
+                      Este processo está com status <strong>{selecionado.status}</strong> e não
+                      possui pendências de parecer.
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -304,6 +292,30 @@ export function ValidationPage() {
           </>
         )}
       </main>
+    </div>
+  )
+}
+
+function DevolucaoCoordenadorAviso({ processo }: { processo: ProcessoSupervisao }) {
+  const devolucao = devolucaoPendenteDoCoordenador(processo)
+  if (!devolucao) return null
+
+  return (
+    <div
+      role="note"
+      className="flex items-start gap-2.5 rounded-sm border border-fx-alerta/40 bg-fx-alerta/10 px-4 py-3 text-sm text-fx-grafite"
+    >
+      <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-fx-alerta" />
+      <div className="space-y-1">
+        <p className="font-semibold text-fx-alerta">
+          Devolvido pelo coordenador {devolucao.revisor_nome} em{' '}
+          {new Date(devolucao.criado_em).toLocaleString('pt-BR')}
+        </p>
+        <p className="whitespace-pre-line">{devolucao.parecer}</p>
+        <p className="text-xs text-fx-cinza">
+          Reavalie o processo: homologue novamente ou solicite correção ao autor.
+        </p>
+      </div>
     </div>
   )
 }
