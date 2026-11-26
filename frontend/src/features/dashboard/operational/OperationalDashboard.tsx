@@ -10,6 +10,7 @@ import {
   ListFilter,
   PencilLine,
   Search,
+  Stamp,
   UserPlus,
   Workflow,
 } from 'lucide-react'
@@ -22,6 +23,7 @@ import {
   getLatestGovernanceReview,
   type ApiProcesso,
 } from '@/features/process-mapping/services/process.service'
+import { canAccessMenu } from '@/features/navigation/permissions.config'
 import { PAPEL_LABEL, type Usuario } from '@/types/auth'
 import {
   SETORES_PROCESSO,
@@ -100,24 +102,46 @@ function StatusBadge({ status }: { status: ProcessoStatus }) {
   return <Badge variant={STATUS_VARIANT[status]}>{status}</Badge>
 }
 
-function ProcessActions({ processo }: { processo: ProcessoResumo }) {
+function ProcessActions({
+  processo,
+  podeDarAval,
+}: {
+  processo: ProcessoResumo
+  podeDarAval: boolean
+}) {
   const navigate = useNavigate()
   const query = `?processo=${encodeURIComponent(processo.id)}`
   const readOnly = ['Aguardando Aprovação', 'Aprovado', 'Publicado'].includes(processo.status)
+  // Homologado pela supervisão: para o coordenador, "ver" já abre a decisão de aval final.
+  const aguardaAval = podeDarAval && processo.status === 'Aprovado'
 
   return (
     <div className="flex items-center justify-end gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        aria-label={`${readOnly ? 'Visualizar' : 'Editar'} ${processo.nome}`}
-        title={readOnly ? 'Visualizar processo' : 'Editar ou revisar processo'}
-        onClick={() => navigate(`/mapear-processo${query}`)}
-      >
-        {readOnly ? <Eye className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
-      </Button>
+      {aguardaAval ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={`Dar aval final em ${processo.nome}`}
+          title="Dar ou não o aval final"
+          onClick={() => navigate(`/publicacao${query}`)}
+        >
+          <Stamp className="h-4 w-4" />
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={`${readOnly ? 'Visualizar' : 'Editar'} ${processo.nome}`}
+          title={readOnly ? 'Visualizar processo' : 'Editar ou revisar processo'}
+          onClick={() => navigate(`/mapear-processo${query}`)}
+        >
+          {readOnly ? <Eye className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
+        </Button>
+      )}
       <Button
         type="button"
         variant="ghost"
@@ -170,6 +194,7 @@ export function OperationalDashboard({
   logout: () => void
 }) {
   const navigate = useNavigate()
+  const podeDarAval = canAccessMenu(user, 'governance:publish')
   const [processes, setProcesses] = React.useState<ProcessoResumo[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [syncedWithApi, setSyncedWithApi] = React.useState(false)
@@ -395,7 +420,7 @@ export function OperationalDashboard({
                       <td className="px-3 py-3.5 text-fx-grafite">{processo.setor}</td>
                       <td className="px-3 py-3.5 text-fx-cinza">{processo.ultimaAtualizacao}</td>
                       <td className="px-3 py-3.5"><StatusBadge status={processo.status} /></td>
-                      <td className="px-3 py-3.5"><ProcessActions processo={processo} /></td>
+                      <td className="px-3 py-3.5"><ProcessActions processo={processo} podeDarAval={podeDarAval} /></td>
                     </tr>
                   ))
                   )}
@@ -419,7 +444,7 @@ export function OperationalDashboard({
                       <p className="text-sm font-semibold leading-snug text-fx-marinho">{processo.nome}</p>
                       <p className="mt-1 text-[10px] text-fx-cinza">{processo.codigo}</p>
                     </div>
-                    <ProcessActions processo={processo} />
+                    <ProcessActions processo={processo} podeDarAval={podeDarAval} />
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs text-fx-cinza">{processo.setor} · {processo.ultimaAtualizacao}</span>
