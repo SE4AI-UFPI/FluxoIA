@@ -40,6 +40,13 @@ export interface ProcessoSupervisao {
   setor: string
   secretaria: string
   objetivo: string
+  descricao?: string
+  legislacao?: string
+  /** Presente apenas para autor, supervisor e coordenador (escopo aplicado pela API). */
+  entrevista?: {
+    pergunta_atual_idx: number
+    respostas: Record<string, string>
+  }
   status: ProcessoStatusApi
   etapa_atual: number
   versao_atual: string

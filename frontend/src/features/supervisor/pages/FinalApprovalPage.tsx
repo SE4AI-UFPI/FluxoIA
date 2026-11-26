@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { PAPEL_LABEL } from '@/types/auth'
-import { BPMNReviewPanel } from '../components/BPMNReviewPanel'
 import { RevisionTimeline } from '../components/RevisionTimeline'
+import { ProcessoConsultaTabs } from '../components/ProcessoConsultaTabs'
 import { useSupervisorDashboard } from '../hooks/useSupervisorDashboard'
 import {
   devolverParaSupervisao,
@@ -175,7 +175,11 @@ export function FinalApprovalPage() {
 
         {selecionado && (
           <div ref={detalheRef} className="scroll-mt-4 space-y-5">
-            <BPMNReviewPanel processo={selecionado} onFechar={() => setSearchParams({})} />
+            <ProcessoConsultaTabs
+              key={selecionado.id}
+              processo={selecionado}
+              onFechar={() => setSearchParams({})}
+            />
 
             {selecionado.status === 'aprovado' ? (
               <DecisaoFinal key={selecionado.id} processo={selecionado} onConcluido={concluir} />

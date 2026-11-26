@@ -1,12 +1,12 @@
 import * as React from 'react'
-import { AlertCircle, ArrowLeft, CheckCircle2, Undo2 } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, Eye, Stamp, Undo2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
+import { canAccessMenu } from '@/features/navigation/permissions.config'
 import { PAPEL_LABEL } from '@/types/auth'
-import { BPMNReviewPanel } from '../components/BPMNReviewPanel'
 import { RevisionTimeline } from '../components/RevisionTimeline'
 import {
   alternarEstadoChecklist,
@@ -17,6 +17,7 @@ import {
   type EstadoChecklist,
 } from '../components/ValidationChecklist'
 import { TechnicalOpinion } from '../components/TechnicalOpinion'
+import { ProcessoConsultaTabs } from '../components/ProcessoConsultaTabs'
 import { useSupervisorDashboard } from '../hooks/useSupervisorDashboard'
 import {
   aprovarProcesso,
@@ -33,6 +34,9 @@ export function ValidationPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user, logout } = useAuth()
+  // A homologação técnica é do supervisor (e do admin). O coordenador acompanha em modo consulta.
+  const podeRegistrarParecer = user?.papel === 'supervisor' || user?.papel === 'admin'
+  const podeDarAval = user ? canAccessMenu(user, 'governance:publish') : false
   const { processos, pendentes, finalizados, carregando, erro, recarregar } = useSupervisorDashboard()
 
   const [aba, setAba] = React.useState<Aba>('pendentes')
@@ -232,17 +236,36 @@ export function ValidationPage() {
           <Card>
             <CardContent className="flex items-center gap-2 py-8 text-sm text-fx-cinza">
               <AlertCircle className="h-4 w-4" />
-              Selecione um processo na lista para registrar o parecer técnico.
+              {podeRegistrarParecer
+                ? 'Selecione um processo na lista para registrar o parecer técnico.'
+                : 'Selecione um processo na lista para acompanhar a homologação técnica.'}
             </CardContent>
           </Card>
         )}
 
         {selecionado && (
           <>
-            {/* Diagrama em largura total */}
-            <BPMNReviewPanel processo={selecionado} onFechar={() => setSearchParams({})} />
+            {/* Dados iniciais, entrevista e diagrama em largura total */}
+            <ProcessoConsultaTabs
+              key={selecionado.id}
+              processo={selecionado}
+              onFechar={() => setSearchParams({})}
+            />
 
-            {selecionado.status === 'aguardando_validacao' ? (
+            {selecionado.status === 'aguardando_validacao' && !podeRegistrarParecer ? (
+              <>
+                <DevolucaoCoordenadorAviso processo={selecionado} />
+                <Card>
+                  <CardContent className="flex items-start gap-2 py-5 text-sm text-fx-cinza">
+                    <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>
+                      Somente consulta. A homologação técnica é feita pelo supervisor do setor; depois
+                      que ele homologar, o processo chega para o seu aval final.
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            ) : selecionado.status === 'aguardando_validacao' ? (
               <>
                 <DevolucaoCoordenadorAviso processo={selecionado} />
                 <ValidationChecklist estados={checklist} onAlternar={alternarItem} />
@@ -263,10 +286,22 @@ export function ValidationPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 pt-0 text-sm text-fx-cinza">
                   {selecionado.status === 'aprovado' ? (
-                    <p>
-                      Homologado pela supervisão. Aguardando o <strong>aval final do coordenador</strong>{' '}
-                      para ser publicado. Se o coordenador discordar, o processo volta para esta fila.
-                    </p>
+                    <>
+                      <p>
+                        Homologado pela supervisão. Aguardando o <strong>aval final do coordenador</strong>{' '}
+                        para ser publicado. Se o coordenador discordar, o processo volta para esta fila.
+                      </p>
+                      {podeDarAval && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => navigate(`/publicacao?processo=${encodeURIComponent(selecionado.id)}`)}
+                        >
+                          <Stamp className="mr-1.5 h-4 w-4" />
+                          Ir para o aval final
+                        </Button>
+                      )}
+                    </>
                   ) : selecionado.status === 'publicado' ? (
                     <p>
                       Publicado

@@ -22,6 +22,7 @@ const PERMISSIONS_BY_ROLE: Record<PapelUsuario, MenuPermission[]> = {
     'dashboard:view',
     'processes:create',
     'processes:view',
+    'governance:validate',
     'governance:publish',
     'indicators:view',
     'reports:view',
