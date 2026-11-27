@@ -5,17 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BPMNEditor } from '@/features/process-mapping/components/BPMNEditor'
 import type { ProcessoSupervisao } from '../types/supervisor.types'
 import { mapApiStatusToWizardStatus } from '@/features/process-mapping/services/process.service'
-import {
-  detalhesPdfDaApi,
-  type BpmnPdfDetails,
-} from '@/features/process-mapping/services/pdf-details'
-
-/** Só após a homologação há um PDF a conferir; antes disso o preview não é oferecido. */
-function detalhesPdf(processo: ProcessoSupervisao): BpmnPdfDetails | undefined {
-  if (processo.status !== 'aprovado' && processo.status !== 'publicado') return undefined
-  return detalhesPdfDaApi(processo)
-}
-
 export function BPMNReviewPanel({
   processo,
   onFechar,
@@ -55,7 +44,7 @@ export function BPMNReviewPanel({
             status={mapApiStatusToWizardStatus(processo.status)}
             readOnly
             onSaveLayout={() => undefined}
-            pdfDetails={detalhesPdf(processo)}
+            permitePreviewPdf={processo.status === 'aprovado' || processo.status === 'publicado'}
             processoId={processo.id}
           />
         ) : (

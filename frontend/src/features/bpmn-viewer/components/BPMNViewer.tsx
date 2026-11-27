@@ -18,7 +18,6 @@ import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from '@/features/process-mapping/components/BPMNLegenda'
-import { montarDetalhesPdf } from '@/features/process-mapping/services/pdf-details'
 import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
 
 interface ElementoBpmn {
@@ -237,27 +236,9 @@ export default function BPMNViewer({ xml, processo }: {
     try {
       const resultado = await viewerRef.current?.saveSVG()
       if (!resultado?.svg) return
-      const { createBpmnPdfFromSvg } = await import('@/features/process-mapping/services/bpmn-pdf.service')
-      const pdf = await createBpmnPdfFromSvg(resultado.svg, {
-        title: nomeProcesso,
-        code: nomeArquivo,
-        status: processo.status,
-        details: montarDetalhesPdf({
-          setor: processo.setor,
-          secretaria: processo.secretaria,
-          versao: processo.versaoAtual,
-          autor: processo.autor,
-          homologadoPor: processo.supervisorAprovador,
-          homologadoEm: processo.aprovadoEm,
-          publicadoPor: processo.publicadoPor,
-          publicadoEm: processo.publicadoEm,
-          objetivo: processo.objetivo,
-          descricao: processo.descricao,
-          legislacao: processo.legislacao,
-          ficha: processo.fichaTecnica,
-        }),
-      })
-      baixarBlob(`${nomeArquivo}.pdf`, pdf.output('blob'))
+      const { gerarPdfProcesso } = await import('@/features/process-mapping/services/pdf-processo.service')
+      const { blob, nomeArquivo: nome } = await gerarPdfProcesso(processo.id, { svg: resultado.svg })
+      baixarBlob(nome, blob)
     } catch (causa) {
       setErro(causa instanceof Error ? causa.message : 'Não foi possível baixar o PDF.')
     }
@@ -359,8 +340,19 @@ export default function BPMNViewer({ xml, processo }: {
           <Button type="button" size="icon" variant="outline" className="h-8 w-8" aria-label="Baixar PNG" title="Baixar PNG" onClick={() => void baixarPng()}>
             <ImageDown className="h-4 w-4 rotate-180" />
           </Button>
-          <Button type="button" size="sm" variant="outline" aria-label="Baixar PDF" title="Baixar PDF" onClick={() => void baixarPdf()}>
-            <FileDown className="mr-1 h-3.5 w-3.5" /> PDF
+          <Button
+            type="button"
+            size="sm"
+            variant={processo.status === 'publicado' ? 'default' : 'outline'}
+            title={
+              processo.status === 'publicado'
+                ? 'Baixar o PDF oficial do processo publicado'
+                : "Baixar o PDF com marca d'água de não aprovado"
+            }
+            onClick={() => void baixarPdf()}
+          >
+            <FileDown className="mr-1 h-3.5 w-3.5" />
+            {processo.status === 'publicado' ? 'PDF final' : 'PDF'}
           </Button>
         </div>
       </div>

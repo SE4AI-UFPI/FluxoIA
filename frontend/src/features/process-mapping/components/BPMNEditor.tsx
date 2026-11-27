@@ -23,9 +23,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from './BPMNLegenda'
-import { PdfFinalButton } from './PdfFinalButton'
 import { PdfPreviewDialog } from './PdfPreviewDialog'
-import type { BpmnPdfDetails } from '../services/pdf-details'
 import type { ProcessStatus } from '../types/process.types'
 import {
   canEditBpmnLayout,
@@ -138,7 +136,7 @@ export function BPMNEditor({
   readOnly = false,
   isSaving = false,
   onSaveLayout,
-  pdfDetails,
+  permitePreviewPdf = false,
   processoId,
 }: {
   xml: string
@@ -148,9 +146,12 @@ export function BPMNEditor({
   readOnly?: boolean
   isSaving?: boolean
   onSaveLayout: (xml: string) => Promise<void> | void
-  /** Conteúdo complementar do PDF; quando presente, habilita a pré-visualização. */
-  pdfDetails?: BpmnPdfDetails
-  /** Id do processo na API; publicado, troca a exportação comum pelo PDF final. */
+  /** Mostra a pré-visualização do PDF (supervisão e coordenação, após a homologação). */
+  permitePreviewPdf?: boolean
+  /**
+   * Id do processo na API. Com ele, o PDF sai completo (informações e ficha técnica),
+   * igual ao das demais telas; sem ele (rascunho local), só com o diagrama.
+   */
   processoId?: string | null
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null)
@@ -438,12 +439,15 @@ export function BPMNEditor({
   async function gerarPdf(mode: 'export' | 'preview') {
     const resultado = await instanceRef.current?.saveSVG()
     if (!resultado?.svg) return null
+    if (processoId) {
+      const { gerarPdfProcesso } = await import('../services/pdf-processo.service')
+      return (await gerarPdfProcesso(processoId, { svg: resultado.svg, mode })).blob
+    }
     const { createBpmnPdfFromSvg } = await import('../services/bpmn-pdf.service')
     const pdf = await createBpmnPdfFromSvg(resultado.svg, {
       title: processName ?? filename,
       code: filename,
       status,
-      details: pdfDetails,
       mode,
     })
     return pdf.output('blob')
@@ -664,21 +668,21 @@ export function BPMNEditor({
             >
               <Download className="h-4 w-4" aria-hidden="true" /> SVG
             </Button>
-            {status === 'Publicado' && processoId ? (
-              <PdfFinalButton processoId={processoId} />
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
-                aria-label="Baixar PDF"
-                title="Baixar PDF"
-                onClick={() => void exportPdf()}
-              >
-                <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
-              </Button>
-            )}
-            {pdfDetails && (
+            <Button
+              type="button"
+              size="sm"
+              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
+              title={
+                status === 'Publicado'
+                  ? 'Baixar o PDF oficial do processo publicado'
+                  : "Baixar o PDF com marca d'água de não aprovado"
+              }
+              onClick={() => void exportPdf()}
+            >
+              <FileDown className="h-4 w-4" aria-hidden="true" />
+              {status === 'Publicado' ? 'Baixar PDF final' : 'Baixar PDF'}
+            </Button>
+            {permitePreviewPdf && (
               <Button
                 type="button"
                 size="sm"

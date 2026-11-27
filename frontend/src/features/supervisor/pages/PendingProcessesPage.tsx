@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { PdfFinalButton } from '@/features/process-mapping/components/PdfFinalButton'
+import { PdfProcessoButton } from '@/features/process-mapping/components/PdfProcessoButton'
 import type { ProcessoStatusApi, ProcessoSupervisao } from '../types/supervisor.types'
 import { devolucaoPendenteDoCoordenador } from '../services/final-approval.service'
 import { SLAIndicator } from '../components/SLAIndicator'
@@ -154,7 +154,7 @@ export function PendingProcessesPage({
                         </td>
                         <td className="py-2.5">
                           <div className="flex items-start justify-end gap-1">
-                            {processo.status === 'publicado' && <PdfFinalButton processoId={processo.id} />}
+                            {processo.status === 'publicado' && <PdfProcessoButton processoId={processo.id} publicado />}
                             <Button
                               type="button"
                               size="sm"
@@ -193,7 +193,7 @@ export function PendingProcessesPage({
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="text-[11px] text-fx-cinza">{formatarData(processo.submetido_em)}</span>
                       <div className="flex items-start gap-1">
-                        {processo.status === 'publicado' && <PdfFinalButton processoId={processo.id} />}
+                        {processo.status === 'publicado' && <PdfProcessoButton processoId={processo.id} publicado />}
                         <Button type="button" size="sm" variant="outline" onClick={() => onAnalisar(processo)}>
                           {processo.status === statusAcionavel ? 'Analisar' : 'Detalhes'}
                         </Button>

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { PAPEL_LABEL } from '@/types/auth'
-import { PdfFinalButton } from '@/features/process-mapping/components/PdfFinalButton'
+import { PdfProcessoButton } from '@/features/process-mapping/components/PdfProcessoButton'
 import { BPMNReviewPanel } from '../components/BPMNReviewPanel'
 import { RevisionTimeline } from '../components/RevisionTimeline'
 import { useSupervisorDashboard } from '../hooks/useSupervisorDashboard'
@@ -157,7 +157,7 @@ export function FinalApprovalPage() {
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               {aviso.mensagem}
             </span>
-            {aviso.publicadoId && <PdfFinalButton processoId={aviso.publicadoId} />}
+            {aviso.publicadoId && <PdfProcessoButton processoId={aviso.publicadoId} publicado />}
           </div>
         )}
 
@@ -204,7 +204,7 @@ export function FinalApprovalPage() {
                         {formatarData(selecionado.publicado_em)}. Homologado por{' '}
                         <strong>{selecionado.aprovado_por_nome || '—'}</strong>.
                       </p>
-                      <PdfFinalButton processoId={selecionado.id} />
+                      <PdfProcessoButton processoId={selecionado.id} publicado />
                     </div>
                   ) : (
                     <p>

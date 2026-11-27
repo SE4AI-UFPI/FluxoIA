@@ -1,15 +1,20 @@
 import * as React from 'react'
 import { FileDown, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { baixarPdfFinal } from '../services/pdf-final.service'
+import { baixarPdfProcesso } from '../services/pdf-processo.service'
 
-/** Botão explícito do PDF final de um processo publicado, com o erro logo abaixo. */
-export function PdfFinalButton({
+/**
+ * Botão explícito do PDF do processo, com o erro logo abaixo. Publicado, é o PDF final
+ * (sem marca d'água); antes disso, o mesmo arquivo marcado como não aprovado.
+ */
+export function PdfProcessoButton({
   processoId,
+  publicado,
   size = 'sm',
   className,
 }: {
   processoId: string
+  publicado: boolean
   size?: 'sm' | 'default'
   className?: string
 }) {
@@ -20,9 +25,9 @@ export function PdfFinalButton({
     setGerando(true)
     setErro(null)
     try {
-      await baixarPdfFinal(processoId)
+      await baixarPdfProcesso(processoId)
     } catch (causa) {
-      setErro(causa instanceof Error ? causa.message : 'Não foi possível gerar o PDF final.')
+      setErro(causa instanceof Error ? causa.message : 'Não foi possível gerar o PDF.')
     } finally {
       setGerando(false)
     }
@@ -35,7 +40,7 @@ export function PdfFinalButton({
         size={size}
         className={className}
         disabled={gerando}
-        title="Baixar o PDF oficial do processo publicado"
+        title={publicado ? 'Baixar o PDF oficial do processo publicado' : "Baixar o PDF com marca d'água de não aprovado"}
         onClick={() => void baixar()}
       >
         {gerando ? (
@@ -43,7 +48,7 @@ export function PdfFinalButton({
         ) : (
           <FileDown className="mr-1.5 h-4 w-4" aria-hidden="true" />
         )}
-        {gerando ? 'Gerando PDF final...' : 'Baixar PDF final'}
+        {gerando ? 'Gerando PDF...' : publicado ? 'Baixar PDF final' : 'Baixar PDF'}
       </Button>
       {erro && (
         <span role="alert" className="text-xs text-fx-alerta">
