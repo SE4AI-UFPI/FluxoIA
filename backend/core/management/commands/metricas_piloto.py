@@ -188,6 +188,7 @@ class Command(BaseCommand):
         logs_validos = sum(1 for lg in logs_val if lg.status == "valida")
         logs_vagos = sum(1 for lg in logs_val if lg.status == "vaga")
         logs_invalidos = sum(1 for lg in logs_val if lg.status == "invalida")
+        logs_duvidas = sum(1 for lg in logs_val if lg.status == "duvida")
         logs_via_ia = [lg for lg in logs_val if lg.origem == "ia_llm"]
         media_lat_val_ia = (
             sum(lg.latencia_segundos for lg in logs_via_ia) / len(logs_via_ia)
@@ -210,7 +211,7 @@ class Command(BaseCommand):
         self.stdout.write(f"   • Avaliações de Feedback (Etapa 4): {total_fb}")
         self.stdout.write(
             f"   • Validações de Respostas da Entrevista: {total_logs_val} "
-            f"(Válidas: {logs_validos} | Vagas/Sugestão: {logs_vagos} | Inválidas/Bloqueadas: {logs_invalidos})"
+            f"(Válidas: {logs_validos} | Vagas/Sugestão: {logs_vagos} | Inválidas/Bloqueadas: {logs_invalidos} | Dúvidas: {logs_duvidas})"
         )
 
         self.stdout.write(f"\n2. INDICADORES CONSOLIDADOS (PARA TABELA DA SEÇÃO 3 DO F4.DO1)")
@@ -294,9 +295,9 @@ class Command(BaseCommand):
                     f"     Parecer Supervisor ({r.decisao}): \"{r.parecer}\" — por {r.revisor.email}"
                 )
 
-        intervencoes = [lg for lg in logs_val if lg.status in ("vaga", "invalida")]
+        intervencoes = [lg for lg in logs_val if lg.status in ("vaga", "invalida", "duvida")]
         if intervencoes:
-            self.stdout.write(f"\n4. INTERVENÇÕES DA IA NA ENTREVISTA (RESPOSTAS VAGAS OU INVÁLIDAS)")
+            self.stdout.write(f"\n4. INTERVENÇÕES DA IA NA ENTREVISTA (RESPOSTAS VAGAS, INVÁLIDAS OU DÚVIDAS)")
             if media_lat_val_ia is not None:
                 self.stdout.write(f"   Latência média das validações via LLM: {media_lat_val_ia:.2f} s")
             for lg in intervencoes:
@@ -305,7 +306,7 @@ class Command(BaseCommand):
                     f"   • [{lg.status.upper()}] Pergunta: {lg.titulo_pergunta} ({lg.chave_pergunta}) | Origem: {lg.origem}\n"
                     f"     Processo: {lg.processo_nome or 'N/D'} | Usuário: {autor_email}\n"
                     f"     Resposta tentada: \"{lg.resposta_enviada}\"\n"
-                    f"     Feedback da IA: \"{lg.mensagem_feedback}\" | Sugestão: \"{lg.sugestao_melhoria}\""
+                    f"     Fala do assistente: \"{lg.mensagem_feedback}\" | Sugestão: \"{lg.sugestao_melhoria}\""
                 )
 
         self.stdout.write(self.style.MIGRATE_HEADING("=" * 80))

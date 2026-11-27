@@ -400,7 +400,7 @@ class PerguntaEntrevistaViewSet(viewsets.ModelViewSet):
     def validar_resposta(self, request):
         """
         POST /api/perguntas-entrevista/validar-resposta/
-        Avalia se a resposta dada pelo usuário a uma pergunta da entrevista é válida, vaga ou inválida.
+        Avalia a mensagem do operacional (válida, vaga, inválida ou dúvida) e devolve a fala do assistente no chat.
         """
         serializer = ValidarRespostaEntrevistaSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -417,6 +417,7 @@ class PerguntaEntrevistaViewSet(viewsets.ModelViewSet):
             processo_setor=dados.get('processo_setor', ''),
             processo_objetivo=dados.get('processo_objetivo', ''),
             respostas_anteriores=dados.get('respostas_anteriores') or {},
+            historico_conversa=dados.get('historico_conversa') or [],
             usuario=request.user,
             usuario_email=getattr(request.user, 'email', None),
         )

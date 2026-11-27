@@ -1,6 +1,5 @@
 import * as React from 'react'
 import {
-  AlertTriangle,
   ArrowLeft,
   Check,
   Edit2,
@@ -8,7 +7,6 @@ import {
   Save,
   Send,
   SkipForward,
-  Sparkles,
   User,
   X,
 } from 'lucide-react'
@@ -16,11 +14,16 @@ import { FluxoBotIcon } from '@/components/icons/FluxoBotIcon'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { type InterviewQuestion, validarRespostaEntrevista } from '../services/interview.service'
 import {
-  type AnswerValidationResult,
-  type InterviewQuestion,
-  validarRespostaEntrevista,
-} from '../services/interview.service'
+  type ChatTurn,
+  type QuestionConversation,
+  EMPTY_CONVERSATION,
+  applyValidationResult,
+  buildConversationHistory,
+  combineAnswer,
+  keepVagueAnswer,
+} from '../services/interview-chat.service'
 import type { InterviewAnswerKey } from '../types/process.types'
 import { InterviewReadOnly } from './ProcessReadOnly'
 import type { InterviewExportContext } from '../services/interview-export.service'
@@ -68,7 +71,14 @@ function EditableInterviewStep({
   const [editingKey, setEditingKey] = React.useState<InterviewAnswerKey | null>(null)
   const [revealedQuestionId, setRevealedQuestionId] = React.useState<InterviewAnswerKey | null>(null)
   const [isValidating, setIsValidating] = React.useState(false)
-  const [validationFeedback, setValidationFeedback] = React.useState<AnswerValidationResult | null>(null)
+  // Conversa das perguntas ainda sem resposta aceita (tentativas e réplicas do assistente).
+  const [conversations, setConversations] = React.useState<Partial<Record<InterviewAnswerKey, QuestionConversation>>>({})
+  // Reconhecimento do assistente exibido logo após a resposta aceita.
+  const [acknowledgements, setAcknowledgements] = React.useState<Partial<Record<InterviewAnswerKey, string>>>({})
+  // Mensagem enviada que aguarda a análise da IA (aparece no chat com o "digitando").
+  const [pendingMessage, setPendingMessage] = React.useState<{ key: InterviewAnswerKey; text: string } | null>(null)
+  const [assistantAnnouncement, setAssistantAnnouncement] = React.useState('')
+  const turnIdRef = React.useRef(0)
 
   const chatContainerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
@@ -102,7 +112,6 @@ function EditableInterviewStep({
   // Iniciar edição de uma pergunta
   function startEditing(key: InterviewAnswerKey) {
     setEditingKey(key)
-    setValidationFeedback(null)
     setInputText(answers[key] ?? '')
     setTimeout(() => {
       inputRef.current?.focus()
@@ -111,14 +120,13 @@ function EditableInterviewStep({
   }
 
   function cancelEditing() {
+    if (editingKey) setConversation(editingKey, null)
     setEditingKey(null)
-    setValidationFeedback(null)
     setInputText(answers[currentQuestion?.id] ?? '')
   }
 
   // Sincroniza o texto do input quando muda de pergunta no fluxo normal
   React.useEffect(() => {
-    setValidationFeedback(null)
     if (!editingKey && currentQuestion) {
       setInputText(answers[currentQuestion.id] ?? '')
     }
@@ -129,7 +137,7 @@ function EditableInterviewStep({
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
     }
-  }, [currentQuestionIndex, answers, isTyping])
+  }, [currentQuestionIndex, answers, isTyping, conversations, acknowledgements, pendingMessage])
 
   if (!currentQuestion) {
     return (
@@ -152,9 +160,25 @@ function EditableInterviewStep({
   const isInterviewComplete = isAtLastQuestion && isLastQuestionAnswered && allRequiredAnswered
   const progressPercent = Math.round((answeredCount / Math.max(1, currentQuestions.length)) * 100)
 
-  function commitAnswer(targetKey: InterviewAnswerKey, textValue: string) {
-    setValidationFeedback(null)
+  function setConversation(key: InterviewAnswerKey, conversation: QuestionConversation | null) {
+    setConversations((prev) => {
+      const next = { ...prev }
+      if (conversation) next[key] = conversation
+      else delete next[key]
+      return next
+    })
+  }
+
+  function commitAnswer(targetKey: InterviewAnswerKey, textValue: string, acknowledgement = '') {
     focusAfterAnswerRef.current = true
+    setConversation(targetKey, null)
+    setAcknowledgements((prev) => {
+      const next = { ...prev }
+      if (acknowledgement) next[targetKey] = acknowledgement
+      else delete next[targetKey]
+      return next
+    })
+    if (acknowledgement) setAssistantAnnouncement(acknowledgement)
     onAnswer(targetKey, textValue)
 
     if (editingKey) {
@@ -168,12 +192,13 @@ function EditableInterviewStep({
     }
   }
 
-  // Envio de resposta com validação semântica por IA
+  // Envio da mensagem: a IA classifica e responde no próprio chat, sempre reconduzindo à pergunta.
   async function handleSend() {
     if ((isTyping && !editingKey) || isValidating) return
     const targetKey = editingKey || currentQuestion.id
     const targetQuestion = currentQuestions.find((q) => q.id === targetKey) || currentQuestion
     const trimmed = inputText.trim()
+    const conversation = conversations[targetKey] ?? EMPTY_CONVERSATION
 
     if (!trimmed && targetQuestion.required) {
       return
@@ -185,35 +210,45 @@ function EditableInterviewStep({
     }
 
     setIsValidating(true)
-    setValidationFeedback(null)
+    setPendingMessage({ key: targetKey, text: trimmed })
+    setInputText('')
 
     const result = await validarRespostaEntrevista({
       chave_pergunta: targetQuestion.id,
       titulo_pergunta: targetQuestion.title,
       enunciado_pergunta: targetQuestion.prompt,
       obrigatoria: targetQuestion.required,
-      resposta: trimmed,
+      resposta: combineAnswer(conversation, trimmed),
       processo_id: processContext?.id || '',
       processo_nome: processContext?.name || exportContext?.name || '',
       processo_setor: processContext?.sector || exportContext?.sector || '',
       processo_objetivo: processContext?.objective || '',
       respostas_anteriores: answers,
+      historico_conversa: buildConversationHistory(conversation),
     })
 
     setIsValidating(false)
+    setPendingMessage(null)
 
-    if (result.status === 'valida') {
-      commitAnswer(targetKey, trimmed)
+    const outcome = applyValidationResult(conversation, trimmed, result, () => `turno-${++turnIdRef.current}`)
+    if (outcome.aceita) {
+      commitAnswer(targetKey, outcome.resposta, outcome.confirmacao)
       return
     }
 
-    setValidationFeedback(result)
+    setConversation(targetKey, outcome.conversa)
+    setAssistantAnnouncement(outcome.fala)
     setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
+  function keepVagueAnswerAndContinue(key: InterviewAnswerKey) {
+    const conversation = conversations[key]
+    if (!conversation || isValidating) return
+    commitAnswer(key, keepVagueAnswer(conversation))
   }
 
   function handleSkip() {
     if (isTyping || isValidating || currentQuestion.required) return
-    setValidationFeedback(null)
     focusAfterAnswerRef.current = true
     if (!answers[currentQuestion.id]) {
       onAnswer(currentQuestion.id, '')
@@ -241,6 +276,9 @@ function EditableInterviewStep({
           : isTyping
             ? 'Assistente preparando a próxima pergunta'
             : `Pergunta ${currentQuestionIndex + 1} de ${currentQuestions.length}. ${currentQuestion.title}. ${currentQuestion.prompt}`}
+      </p>
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {assistantAnnouncement}
       </p>
       {/* Cabeçalho do Chat com Progresso */}
       <CardHeader className="border-b border-fx-linha/70 pb-4 bg-fx-fundo/40">
@@ -354,28 +392,34 @@ function EditableInterviewStep({
                     </div>
                   </div>
                 )}
+
+                {/* Reconhecimento do assistente após a resposta aceita */}
+                {hasAnswer && acknowledgements[q.id] && (
+                  <AssistantBubble>{acknowledgements[q.id]}</AssistantBubble>
+                )}
+
+                {/* Conversa em andamento: tentativas e réplicas humanizadas do assistente */}
+                {(conversations[q.id]?.turnos ?? []).map((turn, turnIdx, turns) => (
+                  <ConversationTurnBubble
+                    key={turn.id}
+                    turn={turn}
+                    canKeepVagueAnswer={
+                      turn.status === 'vaga' && turnIdx === turns.length - 1 && !isValidating
+                    }
+                    onKeepVagueAnswer={() => keepVagueAnswerAndContinue(q.id)}
+                  />
+                ))}
+
+                {pendingMessage?.key === q.id && (
+                  <>
+                    <OperatorAttemptBubble text={pendingMessage.text} />
+                    <TypingBubble label="Assistente analisando sua resposta" />
+                  </>
+                )}
               </div>
             )
           })}
-          {isTyping && (
-            <div className="flex max-w-[85%] items-start gap-3" aria-hidden="true">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
-                <FluxoBotIcon className="h-4 w-4" />
-              </div>
-              <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white px-4 py-3.5 shadow-xs">
-                <span className="sr-only">Assistente preparando a próxima pergunta</span>
-                <span className="flex items-center gap-1.5" aria-hidden="true">
-                  {[0, 120, 240].map((delay) => (
-                    <span
-                      key={delay}
-                      className="h-2 w-2 rounded-full bg-fx-azul motion-safe:animate-pulse"
-                      style={{ animationDelay: `${delay}ms`, animationDuration: '900ms' }}
-                    />
-                  ))}
-                </span>
-              </div>
-            </div>
-          )}
+          {isTyping && <TypingBubble label="Assistente preparando a próxima pergunta" />}
         </div>
 
         {/* Barra de Entrada (Input de Chat) */}
@@ -417,55 +461,6 @@ function EditableInterviewStep({
                 </div>
               )}
 
-              {validationFeedback && validationFeedback.status !== 'valida' && (
-                <div
-                  role="alert"
-                  className={`mb-3 rounded-lg border p-3 text-xs space-y-2 ${
-                    validationFeedback.status === 'invalida'
-                      ? 'border-fx-alerta/40 bg-fx-alerta/10 text-fx-marinho'
-                      : 'border-amber-400/60 bg-amber-50 text-fx-marinho'
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    {validationFeedback.status === 'invalida' ? (
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-fx-alerta mt-0.5" />
-                    ) : (
-                      <Sparkles className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                    )}
-                    <div className="space-y-1 flex-1">
-                      <p className="font-semibold">
-                        {validationFeedback.status === 'invalida'
-                          ? 'A assistente identificou que esta resposta precisa ser reformulada:'
-                          : 'Sugestão da IA para enriquecer o seu diagrama BPMN:'}
-                      </p>
-                      <p className="text-fx-grafite leading-relaxed">
-                        {validationFeedback.mensagem_feedback}
-                      </p>
-                      {validationFeedback.sugestao_melhoria && (
-                        <p className="text-fx-cinza italic">
-                          💡 Dica: {validationFeedback.sugestao_melhoria}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {validationFeedback.status === 'vaga' && (
-                    <div className="flex justify-end gap-2 pt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs bg-white"
-                        onClick={() =>
-                          commitAnswer(editingKey || currentQuestion.id, inputText.trim())
-                        }
-                      >
-                        Manter resposta mesmo assim e avançar
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex items-end gap-2">
                 <textarea
                   ref={inputRef}
@@ -473,13 +468,12 @@ function EditableInterviewStep({
                   readOnly={(isTyping && !editingKey) || isValidating}
                   aria-label={editingKey ? 'Editar resposta' : 'Sua resposta'}
                   value={inputText}
-                  onChange={(e) => {
-                    setInputText(e.target.value)
-                    if (validationFeedback) setValidationFeedback(null)
-                  }}
+                  onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    editingKey
+                    (conversations[editingKey || currentQuestion.id]?.partesVagas.length ?? 0) > 0
+                      ? 'Complemente sua resposta com o detalhe pedido...'
+                      : editingKey
                       ? "Atualize sua resposta e clique em Salvar Alteração..."
                       : currentQuestion.required
                       ? "Digite sua resposta detalhada e clique em Enviar..."
@@ -564,5 +558,79 @@ function EditableInterviewStep({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function AssistantBubble({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 max-w-[85%]">
+      <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
+        <FluxoBotIcon className="h-4 w-4" />
+      </div>
+      <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white px-4 py-3 text-sm text-fx-grafite shadow-xs leading-relaxed space-y-2">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function OperatorAttemptBubble({ text }: { text: string }) {
+  return (
+    <div className="flex items-start justify-end gap-2.5 pl-6 sm:pl-10">
+      <div className="rounded-2xl rounded-tr-xs border border-fx-linha bg-fx-nevoa px-4 py-3 text-sm text-fx-marinho shadow-xs max-w-[85%]">
+        <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
+      </div>
+      <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-fx-nevoa text-fx-marinho border border-fx-linha shadow-xs" aria-hidden="true">
+        <User className="h-4 w-4" />
+      </div>
+    </div>
+  )
+}
+
+function ConversationTurnBubble({
+  turn,
+  canKeepVagueAnswer,
+  onKeepVagueAnswer,
+}: {
+  turn: ChatTurn
+  canKeepVagueAnswer: boolean
+  onKeepVagueAnswer: () => void
+}) {
+  if (turn.papel === 'operacional') return <OperatorAttemptBubble text={turn.texto} />
+  return (
+    <AssistantBubble>
+      <p className="whitespace-pre-wrap">{turn.texto}</p>
+      {canKeepVagueAnswer && (
+        <button
+          type="button"
+          onClick={onKeepVagueAnswer}
+          className="text-xs font-medium text-fx-azul underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fx-azul rounded-xs"
+        >
+          Prefiro manter minha resposta e seguir
+        </button>
+      )}
+    </AssistantBubble>
+  )
+}
+
+function TypingBubble({ label }: { label: string }) {
+  return (
+    <div className="flex max-w-[85%] items-start gap-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fx-azul text-white shadow-xs" aria-hidden="true">
+        <FluxoBotIcon className="h-4 w-4" />
+      </div>
+      <div className="rounded-2xl rounded-tl-xs border border-fx-linha bg-white px-4 py-3.5 shadow-xs">
+        <span className="sr-only">{label}</span>
+        <span className="flex items-center gap-1.5" aria-hidden="true">
+          {[0, 120, 240].map((delay) => (
+            <span
+              key={delay}
+              className="h-2 w-2 rounded-full bg-fx-azul motion-safe:animate-pulse"
+              style={{ animationDelay: `${delay}ms`, animationDuration: '900ms' }}
+            />
+          ))}
+        </span>
+      </div>
+    </div>
   )
 }

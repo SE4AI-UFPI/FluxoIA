@@ -150,12 +150,19 @@ export async function reordenarPerguntasAdmin(ordemIds: string[]): Promise<ApiIn
   })
 }
 
-export type AnswerValidationStatus = 'valida' | 'vaga' | 'invalida'
+export type AnswerValidationStatus = 'valida' | 'vaga' | 'invalida' | 'duvida'
 
 export interface AnswerValidationResult {
   status: AnswerValidationStatus
+  /** Fala humanizada do assistente no chat (reconhecimento, pedido de detalhe ou retomada da pergunta). */
+  mensagem_assistente: string
   mensagem_feedback: string
   sugestao_melhoria: string
+}
+
+export interface ConversationTurnPayload {
+  papel: 'operacional' | 'assistente'
+  texto: string
 }
 
 export interface ValidateAnswerPayload {
@@ -169,6 +176,7 @@ export interface ValidateAnswerPayload {
   processo_setor?: string
   processo_objetivo?: string
   respostas_anteriores?: Record<string, string>
+  historico_conversa?: ConversationTurnPayload[]
 }
 
 export async function validarRespostaEntrevista(
@@ -180,7 +188,8 @@ export async function validarRespostaEntrevista(
       payload,
     )
   } catch {
-    return { status: 'valida', mensagem_feedback: '', sugestao_melhoria: '' }
+    // Se a validação falhar, a resposta é aceita para não travar o operacional.
+    return { status: 'valida', mensagem_assistente: '', mensagem_feedback: '', sugestao_melhoria: '' }
   }
 }
 

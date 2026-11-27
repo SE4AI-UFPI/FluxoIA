@@ -482,6 +482,13 @@ class PerguntaEntrevistaSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class TurnoConversaEntrevistaSerializer(serializers.Serializer):
+    """Uma fala anterior do chat da pergunta atual (tentativa do operacional ou réplica do assistente)."""
+
+    papel = serializers.ChoiceField(choices=['operacional', 'assistente'])
+    texto = serializers.CharField(max_length=2000, allow_blank=True)
+
+
 class ValidarRespostaEntrevistaSerializer(serializers.Serializer):
     """DTO para validação semântica de uma resposta individual da entrevista guiada."""
 
@@ -498,6 +505,12 @@ class ValidarRespostaEntrevistaSerializer(serializers.Serializer):
         child=serializers.CharField(allow_blank=True),
         required=False,
         default=dict,
+    )
+    historico_conversa = TurnoConversaEntrevistaSerializer(
+        many=True,
+        required=False,
+        default=list,
+        max_length=20,
     )
 
 
