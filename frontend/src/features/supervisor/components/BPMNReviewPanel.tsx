@@ -6,28 +6,14 @@ import { BPMNEditor } from '@/features/process-mapping/components/BPMNEditor'
 import type { ProcessoSupervisao } from '../types/supervisor.types'
 import { mapApiStatusToWizardStatus } from '@/features/process-mapping/services/process.service'
 import {
-  extrairFichaTecnica,
-  montarDetalhesPdf,
+  detalhesPdfDaApi,
   type BpmnPdfDetails,
 } from '@/features/process-mapping/services/pdf-details'
 
 /** Só após a homologação há um PDF a conferir; antes disso o preview não é oferecido. */
 function detalhesPdf(processo: ProcessoSupervisao): BpmnPdfDetails | undefined {
   if (processo.status !== 'aprovado' && processo.status !== 'publicado') return undefined
-  return montarDetalhesPdf({
-    setor: processo.setor,
-    secretaria: processo.secretaria,
-    versao: processo.versao_atual,
-    autor: processo.criado_por_nome,
-    homologadoPor: processo.aprovado_por_nome,
-    homologadoEm: processo.aprovado_em,
-    publicadoPor: processo.publicado_por_nome,
-    publicadoEm: processo.publicado_em,
-    objetivo: processo.objetivo,
-    descricao: processo.descricao,
-    legislacao: processo.legislacao,
-    ficha: extrairFichaTecnica(processo.versoes_bpmn),
-  })
+  return detalhesPdfDaApi(processo)
 }
 
 export function BPMNReviewPanel({
@@ -70,6 +56,7 @@ export function BPMNReviewPanel({
             readOnly
             onSaveLayout={() => undefined}
             pdfDetails={detalhesPdf(processo)}
+            processoId={processo.id}
           />
         ) : (
           <p className="flex items-start gap-2 rounded-sm border border-fx-linha bg-fx-nevoa/30 px-3 py-4 text-sm text-fx-cinza">

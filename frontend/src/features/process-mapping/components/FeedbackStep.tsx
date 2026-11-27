@@ -278,6 +278,7 @@ export function FeedbackStep({
                 filename={process.code ?? 'processo-bpmn'}
                 processName={process.info.name}
                 status={process.status}
+                processoId={process.backendId}
                 readOnly
                 isSaving={false}
                 onSaveLayout={onSaveLayout}
@@ -381,6 +382,7 @@ export function FeedbackStep({
               filename={process.code ?? 'processo-bpmn'}
               processName={process.info.name}
               status={process.status}
+              processoId={process.backendId}
               isSaving={isSavingLayout}
               onSaveLayout={onSaveLayout}
             />

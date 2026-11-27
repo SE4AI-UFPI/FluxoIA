@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { PAPEL_LABEL } from '@/types/auth'
+import { PdfFinalButton } from '@/features/process-mapping/components/PdfFinalButton'
 import { BPMNReviewPanel } from '../components/BPMNReviewPanel'
 import { RevisionTimeline } from '../components/RevisionTimeline'
 import { useSupervisorDashboard } from '../hooks/useSupervisorDashboard'
@@ -19,6 +20,12 @@ import { PendingProcessesPage } from './PendingProcessesPage'
 import type { ProcessoSupervisao } from '../types/supervisor.types'
 
 type Aba = 'aguardando' | 'publicados'
+
+interface Aviso {
+  mensagem: string
+  /** Preenchido quando o aval acabou de publicar o processo: oferece o PDF final. */
+  publicadoId?: string
+}
 
 function formatarData(valor: string | null): string {
   return valor ? new Date(valor).toLocaleString('pt-BR') : '—'
@@ -35,7 +42,7 @@ export function FinalApprovalPage() {
   const { processos, carregando, erro, recarregar } = useSupervisorDashboard()
 
   const [aba, setAba] = React.useState<Aba>('aguardando')
-  const [aviso, setAviso] = React.useState<string | null>(null)
+  const [aviso, setAviso] = React.useState<Aviso | null>(null)
 
   const aguardando = React.useMemo(
     () => processos.filter((item) => item.status === 'aprovado'),
@@ -65,10 +72,10 @@ export function FinalApprovalPage() {
     setSearchParams({ processo: processo.id })
   }
 
-  function concluir(mensagem: string) {
+  function concluir(resultado: Aviso) {
     setSearchParams({})
     recarregar()
-    setAviso(mensagem)
+    setAviso(resultado)
   }
 
   return (
@@ -145,9 +152,12 @@ export function FinalApprovalPage() {
           </div>
         )}
         {aviso && (
-          <div role="status" className="flex items-start gap-2 rounded-sm border border-fx-sucesso/40 bg-fx-sucesso/10 px-3.5 py-3 text-sm text-fx-sucesso">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-            {aviso}
+          <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-sm border border-fx-sucesso/40 bg-fx-sucesso/10 px-3.5 py-3 text-sm text-fx-sucesso">
+            <span className="flex min-w-0 flex-1 items-start gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              {aviso.mensagem}
+            </span>
+            {aviso.publicadoId && <PdfFinalButton processoId={aviso.publicadoId} />}
           </div>
         )}
 
@@ -188,11 +198,14 @@ export function FinalApprovalPage() {
                 </CardHeader>
                 <CardContent className="pt-0 text-sm text-fx-cinza">
                   {selecionado.status === 'publicado' ? (
-                    <p>
-                      Publicado por <strong>{selecionado.publicado_por_nome || '—'}</strong> em{' '}
-                      {formatarData(selecionado.publicado_em)}. Homologado por{' '}
-                      <strong>{selecionado.aprovado_por_nome || '—'}</strong>.
-                    </p>
+                    <div className="space-y-3">
+                      <p>
+                        Publicado por <strong>{selecionado.publicado_por_nome || '—'}</strong> em{' '}
+                        {formatarData(selecionado.publicado_em)}. Homologado por{' '}
+                        <strong>{selecionado.aprovado_por_nome || '—'}</strong>.
+                      </p>
+                      <PdfFinalButton processoId={selecionado.id} />
+                    </div>
                   ) : (
                     <p>
                       Este processo não está homologado pela supervisão e não aguarda o seu aval.
@@ -215,7 +228,7 @@ function DecisaoFinal({
   onConcluido,
 }: {
   processo: ProcessoSupervisao
-  onConcluido: (mensagem: string) => void
+  onConcluido: (resultado: Aviso) => void
 }) {
   const [parecer, setParecer] = React.useState('')
   const [confirmandoPublicacao, setConfirmandoPublicacao] = React.useState(false)
@@ -240,10 +253,13 @@ function DecisaoFinal({
     try {
       if (acao === 'publicar') {
         await publicarProcesso(processo.id, texto)
-        onConcluido(`"${processo.nome}" foi publicado. O PDF oficial já pode ser gerado.`)
+        onConcluido({
+          mensagem: `"${processo.nome}" foi publicado. O PDF final já está disponível.`,
+          publicadoId: processo.id,
+        })
       } else {
         await devolverParaSupervisao(processo.id, texto)
-        onConcluido(`"${processo.nome}" voltou para a fila de homologação da supervisão.`)
+        onConcluido({ mensagem: `"${processo.nome}" voltou para a fila de homologação da supervisão.` })
       }
     } catch (causa) {
       setErro(causa instanceof Error ? causa.message : 'Não foi possível registrar a decisão.')

@@ -100,3 +100,36 @@ export function montarDetalhesPdf(dados: DadosProcessoPdf): BpmnPdfDetails {
     ficha: dados.ficha,
   }
 }
+
+/** Campos do processo como a API os entrega, suficientes para o PDF. */
+export interface ProcessoApiPdf {
+  setor?: string | null
+  secretaria?: string | null
+  versao_atual?: string | null
+  criado_por_nome?: string | null
+  aprovado_por_nome?: string | null
+  aprovado_em?: string | null
+  publicado_por_nome?: string | null
+  publicado_em?: string | null
+  objetivo?: string | null
+  descricao?: string | null
+  legislacao?: string | null
+  versoes_bpmn?: VersaoComFicha[] | null
+}
+
+export function detalhesPdfDaApi(processo: ProcessoApiPdf): BpmnPdfDetails {
+  return montarDetalhesPdf({
+    setor: processo.setor,
+    secretaria: processo.secretaria,
+    versao: processo.versao_atual,
+    autor: processo.criado_por_nome,
+    homologadoPor: processo.aprovado_por_nome,
+    homologadoEm: processo.aprovado_em,
+    publicadoPor: processo.publicado_por_nome,
+    publicadoEm: processo.publicado_em,
+    objetivo: processo.objetivo,
+    descricao: processo.descricao,
+    legislacao: processo.legislacao,
+    ficha: extrairFichaTecnica(processo.versoes_bpmn),
+  })
+}

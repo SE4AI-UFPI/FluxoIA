@@ -23,6 +23,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from './BPMNLegenda'
+import { PdfFinalButton } from './PdfFinalButton'
 import { PdfPreviewDialog } from './PdfPreviewDialog'
 import type { BpmnPdfDetails } from '../services/pdf-details'
 import type { ProcessStatus } from '../types/process.types'
@@ -138,6 +139,7 @@ export function BPMNEditor({
   isSaving = false,
   onSaveLayout,
   pdfDetails,
+  processoId,
 }: {
   xml: string
   filename: string
@@ -148,6 +150,8 @@ export function BPMNEditor({
   onSaveLayout: (xml: string) => Promise<void> | void
   /** Conteúdo complementar do PDF; quando presente, habilita a pré-visualização. */
   pdfDetails?: BpmnPdfDetails
+  /** Id do processo na API; publicado, troca a exportação comum pelo PDF final. */
+  processoId?: string | null
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const instanceRef = React.useRef<DiagramInstance | null>(null)
@@ -660,16 +664,20 @@ export function BPMNEditor({
             >
               <Download className="h-4 w-4" aria-hidden="true" /> SVG
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
-              aria-label="Baixar PDF"
-              title="Baixar PDF"
-              onClick={() => void exportPdf()}
-            >
-              <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
-            </Button>
+            {status === 'Publicado' && processoId ? (
+              <PdfFinalButton processoId={processoId} />
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-700"
+                aria-label="Baixar PDF"
+                title="Baixar PDF"
+                onClick={() => void exportPdf()}
+              >
+                <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
+              </Button>
+            )}
             {pdfDetails && (
               <Button
                 type="button"

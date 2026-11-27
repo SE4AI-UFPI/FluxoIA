@@ -347,6 +347,7 @@ export function BPMNGenerationStep({
                 filename={process.code ?? 'processo-bpmn'}
                 processName={process.info.name}
                 status={process.status}
+                processoId={process.backendId}
                 readOnly={readOnly}
                 isSaving={isSavingLayout}
                 onSaveLayout={onSaveLayout}
