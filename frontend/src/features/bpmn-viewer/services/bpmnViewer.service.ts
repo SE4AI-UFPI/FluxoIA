@@ -1,4 +1,8 @@
 import { apiClient } from '@/services/apiClient'
+import {
+  extrairFichaTecnica,
+  type FichaTecnicaApi,
+} from '@/features/process-mapping/services/pdf-details'
 import type {
   ProcessoBiblioteca,
   RevisaoBiblioteca,
@@ -19,6 +23,8 @@ interface ApiProcesso {
   versao_atual: string
   criado_por_nome?: string
   aprovado_por_nome?: string
+  publicado_por_nome?: string
+  publicado_em?: string | null
   criado_em: string
   atualizado_em: string
   submetido_em: string | null
@@ -32,12 +38,7 @@ interface ApiProcesso {
     motivo_alteracao: string
     gerado_por_nome: string
     criado_em: string
-    estrutura_json?: {
-      ficha_tecnica?: {
-        observacoes_prazo?: string
-        informacoes_gerais?: string
-      }
-    }
+    estrutura_json?: { ficha_tecnica?: FichaTecnicaApi | null } | null
   }>
   revisoes_governanca?: Array<{
     id: string
@@ -109,8 +110,9 @@ export function mapearProcesso(api: ApiProcesso): ProcessoBiblioteca | null {
 
   const respostas = api.entrevista?.respostas ?? {}
   const versoes = api.versoes_bpmn ?? []
-  const ultimaVersao = versoes[versoes.length - 1]
-  const fichaPrazo = ultimaVersao?.estrutura_json?.ficha_tecnica?.observacoes_prazo?.trim()
+  const fichaApi = versoes[versoes.length - 1]?.estrutura_json?.ficha_tecnica
+  const fichaTecnica = extrairFichaTecnica(versoes)
+  const fichaPrazo = fichaApi?.observacoes_prazo?.trim()
   const entrevistaPrazo =
     respostas.exceptions?.toLowerCase().includes('prazo') ||
     respostas.rules?.toLowerCase().includes('prazo')
@@ -136,10 +138,14 @@ export function mapearProcesso(api: ApiProcesso): ProcessoBiblioteca | null {
     submetidoEm: api.submetido_em,
     aprovadoEm: api.aprovado_em,
     supervisorAprovador: api.aprovado_por_nome || '',
+    publicadoPor: api.publicado_por_nome || '',
+    publicadoEm: api.publicado_em ?? null,
     bpmnXml: api.bpmn_xml_atual,
-    documentos: dividirLista(respostas.documents),
-    sistemas: dividirLista(respostas.systems),
+    // A ficha da versão vem para todo leitor; a entrevista, só para o autor.
+    documentos: fichaApi?.documentacao?.length ? fichaTecnica.documentacao : dividirLista(respostas.documents),
+    sistemas: fichaApi?.sistemas?.length ? fichaTecnica.sistemas : dividirLista(respostas.systems),
     prazos,
+    fichaTecnica,
     versoes: mapearVersoes(api),
     revisoes: mapearRevisoes(api),
   }

@@ -1,3 +1,5 @@
+import type { FichaTecnicaPdf } from '@/features/process-mapping/services/pdf-details'
+
 export type StatusBiblioteca =
   | 'aprovado'
   | 'publicado'
@@ -40,10 +42,13 @@ export interface ProcessoBiblioteca {
   submetidoEm: string | null
   aprovadoEm: string | null
   supervisorAprovador: string
+  publicadoPor: string
+  publicadoEm: string | null
   bpmnXml: string | null
   documentos: string[]
   sistemas: string[]
   prazos: string
+  fichaTecnica: FichaTecnicaPdf
   versoes: VersaoBiblioteca[]
   revisoes: RevisaoBiblioteca[]
 }

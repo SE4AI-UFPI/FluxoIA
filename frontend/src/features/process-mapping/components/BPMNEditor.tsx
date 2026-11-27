@@ -2,6 +2,7 @@ import * as React from 'react'
 import {
   Download,
   Expand,
+  Eye,
   FileCode2,
   FileDown,
   LayoutDashboard,
@@ -22,6 +23,8 @@ import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from './BPMNLegenda'
+import { PdfPreviewDialog } from './PdfPreviewDialog'
+import type { BpmnPdfDetails } from '../services/pdf-details'
 import type { ProcessStatus } from '../types/process.types'
 import {
   canEditBpmnLayout,
@@ -134,6 +137,7 @@ export function BPMNEditor({
   readOnly = false,
   isSaving = false,
   onSaveLayout,
+  pdfDetails,
 }: {
   xml: string
   filename: string
@@ -142,6 +146,8 @@ export function BPMNEditor({
   readOnly?: boolean
   isSaving?: boolean
   onSaveLayout: (xml: string) => Promise<void> | void
+  /** Conteúdo complementar do PDF; quando presente, habilita a pré-visualização. */
+  pdfDetails?: BpmnPdfDetails
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const instanceRef = React.useRef<DiagramInstance | null>(null)
@@ -158,6 +164,8 @@ export function BPMNEditor({
   const [dirty, setDirty] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [pdfPreview, setPdfPreview] = React.useState<Blob | null>(null)
+  const fecharPreview = React.useCallback(() => setPdfPreview(null), [])
 
   React.useEffect(() => {
     xmlRef.current = xmlVigente
@@ -423,41 +431,35 @@ export function BPMNEditor({
     if (resultado?.svg) downloadFile(`${filename}.svg`, resultado.svg, 'image/svg+xml')
   }
 
+  async function gerarPdf(mode: 'export' | 'preview') {
+    const resultado = await instanceRef.current?.saveSVG()
+    if (!resultado?.svg) return null
+    const { createBpmnPdfFromSvg } = await import('../services/bpmn-pdf.service')
+    const pdf = await createBpmnPdfFromSvg(resultado.svg, {
+      title: processName ?? filename,
+      code: filename,
+      status,
+      details: pdfDetails,
+      mode,
+    })
+    return pdf.output('blob')
+  }
+
   async function exportPdf() {
     try {
-      const resultado = await instanceRef.current?.saveSVG()
-      if (!resultado?.svg) return
-
-      const svgUrl = URL.createObjectURL(new Blob([resultado.svg], { type: 'image/svg+xml' }))
-      const image = new Image()
-      image.src = svgUrl
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error('Não foi possível preparar o diagrama para PDF.'))
-      })
-
-      const canvas = document.createElement('canvas')
-      canvas.width = (image.naturalWidth || 1200) * 2
-      canvas.height = (image.naturalHeight || 600) * 2
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('Não foi possível criar a imagem do diagrama.')
-      context.fillStyle = '#ffffff'
-      context.fillRect(0, 0, canvas.width, canvas.height)
-      context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(svgUrl)
-
-      const { createBpmnPdf } = await import('../services/bpmn-pdf.service')
-      const pdf = createBpmnPdf({
-        diagramImage: canvas.toDataURL('image/png'),
-        diagramWidth: canvas.width,
-        diagramHeight: canvas.height,
-        title: processName ?? filename,
-        code: filename,
-        status,
-      })
-      downloadBlob(`${filename}.pdf`, pdf.output('blob'))
+      const blob = await gerarPdf('export')
+      if (blob) downloadBlob(`${filename}.pdf`, blob)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível exportar o PDF.')
+    }
+  }
+
+  async function abrirPreviewPdf() {
+    try {
+      const blob = await gerarPdf('preview')
+      if (blob) setPdfPreview(blob)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível gerar a pré-visualização do PDF.')
     }
   }
 
@@ -668,6 +670,17 @@ export function BPMNEditor({
             >
               <FileDown className="h-4 w-4" aria-hidden="true" /> PDF
             </Button>
+            {pdfDetails && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title="Pré-visualizar o PDF que será exportado"
+                onClick={() => void abrirPreviewPdf()}
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" /> Pré-visualizar PDF
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -730,6 +743,15 @@ export function BPMNEditor({
       </div>
 
       <BPMNLegenda />
+
+      {pdfPreview && (
+        <PdfPreviewDialog
+          pdf={pdfPreview}
+          title={processName ?? filename}
+          onClose={fecharPreview}
+          onDownload={status === 'Publicado' ? () => downloadBlob(`${filename}.pdf`, pdfPreview) : undefined}
+        />
+      )}
     </section>
   )
 }
