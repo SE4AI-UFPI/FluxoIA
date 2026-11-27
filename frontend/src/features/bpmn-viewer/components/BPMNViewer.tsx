@@ -18,6 +18,7 @@ import 'bpmn-js/dist/assets/bpmn-js.css'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BPMNLegenda } from '@/features/process-mapping/components/BPMNLegenda'
+import { montarDetalhesPdf } from '@/features/process-mapping/services/pdf-details'
 import type { ProcessoBiblioteca } from '../types/bpmnViewer.types'
 
 interface ElementoBpmn {
@@ -62,12 +63,12 @@ function baixarTexto(nome: string, conteudo: string, tipo: string) {
  * Visualizador BPMN institucional — SOMENTE LEITURA (NavigatedViewer, sem Modeler).
  * Toda edição permanece no módulo de Mapeamento de Processos.
  */
-export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
+export default function BPMNViewer({ xml, processo }: {
   xml: string
-  nomeArquivo: string
-  nomeProcesso: string
-  status: ProcessoBiblioteca['status']
+  processo: ProcessoBiblioteca
 }) {
+  const nomeArquivo = processo.codigo
+  const nomeProcesso = processo.nome
   const containerRef = React.useRef<HTMLDivElement>(null)
   const viewerRef = React.useRef<NavigatedViewer | null>(null)
   const [carregando, setCarregando] = React.useState(true)
@@ -223,22 +224,8 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
     try {
       const resultado = await viewerRef.current?.saveSVG()
       if (!resultado?.svg) return
-      const url = URL.createObjectURL(new Blob([resultado.svg], { type: 'image/svg+xml' }))
-      const imagem = new Image()
-      imagem.src = url
-      await new Promise<void>((resolve, reject) => {
-        imagem.onload = () => resolve()
-        imagem.onerror = () => reject(new Error('Falha ao preparar a imagem do diagrama.'))
-      })
-      const canvas = document.createElement('canvas')
-      canvas.width = (imagem.naturalWidth || 1200) * 2
-      canvas.height = (imagem.naturalHeight || 600) * 2
-      const contexto = canvas.getContext('2d')
-      if (!contexto) throw new Error('Falha ao gerar a imagem do diagrama.')
-      contexto.fillStyle = '#ffffff'
-      contexto.fillRect(0, 0, canvas.width, canvas.height)
-      contexto.drawImage(imagem, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(url)
+      const { renderSvgToCanvas } = await import('@/features/process-mapping/services/bpmn-pdf.service')
+      const canvas = await renderSvgToCanvas(resultado.svg)
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (blob) baixarBlob(`${nomeArquivo}.png`, blob)
     } catch (causa) {
@@ -250,33 +237,25 @@ export default function BPMNViewer({ xml, nomeArquivo, nomeProcesso, status }: {
     try {
       const resultado = await viewerRef.current?.saveSVG()
       if (!resultado?.svg) return
-
-      const svgUrl = URL.createObjectURL(new Blob([resultado.svg], { type: 'image/svg+xml' }))
-      const imagem = new Image()
-      imagem.src = svgUrl
-      await new Promise<void>((resolve, reject) => {
-        imagem.onload = () => resolve()
-        imagem.onerror = () => reject(new Error('Não foi possível preparar o diagrama para PDF.'))
-      })
-
-      const canvas = document.createElement('canvas')
-      canvas.width = (imagem.naturalWidth || 1200) * 2
-      canvas.height = (imagem.naturalHeight || 600) * 2
-      const contexto = canvas.getContext('2d')
-      if (!contexto) throw new Error('Não foi possível gerar a imagem do diagrama.')
-      contexto.fillStyle = '#ffffff'
-      contexto.fillRect(0, 0, canvas.width, canvas.height)
-      contexto.drawImage(imagem, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(svgUrl)
-
-      const { createBpmnPdf } = await import('@/features/process-mapping/services/bpmn-pdf.service')
-      const pdf = createBpmnPdf({
-        diagramImage: canvas.toDataURL('image/png'),
-        diagramWidth: canvas.width,
-        diagramHeight: canvas.height,
+      const { createBpmnPdfFromSvg } = await import('@/features/process-mapping/services/bpmn-pdf.service')
+      const pdf = await createBpmnPdfFromSvg(resultado.svg, {
         title: nomeProcesso,
         code: nomeArquivo,
-        status,
+        status: processo.status,
+        details: montarDetalhesPdf({
+          setor: processo.setor,
+          secretaria: processo.secretaria,
+          versao: processo.versaoAtual,
+          autor: processo.autor,
+          homologadoPor: processo.supervisorAprovador,
+          homologadoEm: processo.aprovadoEm,
+          publicadoPor: processo.publicadoPor,
+          publicadoEm: processo.publicadoEm,
+          objetivo: processo.objetivo,
+          descricao: processo.descricao,
+          legislacao: processo.legislacao,
+          ficha: processo.fichaTecnica,
+        }),
       })
       baixarBlob(`${nomeArquivo}.pdf`, pdf.output('blob'))
     } catch (causa) {

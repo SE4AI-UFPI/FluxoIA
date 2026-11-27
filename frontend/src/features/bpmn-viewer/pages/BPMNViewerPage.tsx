@@ -216,9 +216,7 @@ export function BPMNViewerPage() {
                   >
                     <BPMNViewer
                       xml={selecionado.bpmnXml}
-                      nomeArquivo={selecionado.codigo}
-                      nomeProcesso={selecionado.nome}
-                      status={selecionado.status}
+                      processo={selecionado}
                     />
                   </React.Suspense>
                 ) : (

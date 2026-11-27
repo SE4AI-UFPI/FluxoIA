@@ -1,3 +1,4 @@
+import type { FichaTecnicaApi } from '@/features/process-mapping/services/pdf-details'
 export type ProcessoStatusApi =
   | 'rascunho'
   | 'em_entrevista'
@@ -31,6 +32,7 @@ export interface VersaoBpmnResumo {
   motivo_alteracao: string
   gerado_por_nome: string
   criado_em: string
+  estrutura_json?: { ficha_tecnica?: FichaTecnicaApi | null } | null
 }
 
 export interface ProcessoSupervisao {
@@ -40,6 +42,8 @@ export interface ProcessoSupervisao {
   setor: string
   secretaria: string
   objetivo: string
+  descricao?: string
+  legislacao?: string
   status: ProcessoStatusApi
   etapa_atual: number
   versao_atual: string
