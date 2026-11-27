@@ -39,6 +39,8 @@ services:
       # Virtual key gerada no LiteLLM (veja o README).
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_PROVIDER: openai_compatible
+      # Senha inicial dos usuários criados por `manage.py seed_db` (vazia = sem senha utilizável).
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
